@@ -55,7 +55,7 @@ if not os.path.exists(KEY_FILE):
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
 # own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
-app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=12 * 1024 * 1024)
+app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")), MAX_CONTENT_LENGTH=12 * 1024 * 1024)
 
 
 def now():
@@ -229,6 +229,7 @@ def template_globals():
     token = session.setdefault("csrf", secrets.token_hex(16))
     user = g.get("user")
     return {
+        "other_url": os.environ.get("OTHER_APP_URL"),
         "user": user, "csrf": Markup(f'<input type="hidden" name="csrf" value="{token}">'),
         "can": lambda *roles: bool(user) and user["role"] in roles,
         "CATEGORIES": CATEGORIES, "PRIORITIES": PRIORITIES, "STATUSES": STATUSES, "ROLES": ROLES,
@@ -634,6 +635,9 @@ def seed_demo():
 
 
 init_db()
+if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
+    seed_demo()
+    app.config["DEMO"] = True
 if __name__ == "__main__":
     if "--demo" in sys.argv:
         seed_demo()

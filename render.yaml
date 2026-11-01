@@ -1,0 +1,29 @@
+# Render Blueprint: two free web services from this repo, both in demo mode.
+# Demo data resets whenever a service restarts (free tier has no disk); sleeps after ~15 min idle.
+services:
+  - type: web
+    name: rec-ams
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DEMO
+        value: "1"
+      - key: OTHER_APP_URL   # change if Render gives the helpdesk a different address
+        value: https://rec-helpdesk.onrender.com/
+  - type: web
+    name: rec-helpdesk
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --chdir helpdesk --workers 1 --threads 4 app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: DEMO
+        value: "1"
+      - key: OTHER_APP_URL
+        value: https://rec-ams.onrender.com/
