@@ -55,7 +55,7 @@ if not os.path.exists(KEY_FILE):
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
 # own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
-app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")), MAX_CONTENT_LENGTH=12 * 1024 * 1024)
+app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SECURE=bool(os.environ.get("RENDER")), MAX_CONTENT_LENGTH=12 * 1024 * 1024, SEND_FILE_MAX_AGE_DEFAULT=86400)
 
 
 def now():
@@ -222,6 +222,7 @@ def due_text(t):
 
 
 app.jinja_env.globals.update(overdue=overdue, due_text=due_text)
+app.jinja_env.globals["static_v"] = int(os.path.getmtime(os.path.join(HERE, "static", "style.css")))  # cache-bust: CSS/JS cached for a day
 
 
 @app.context_processor

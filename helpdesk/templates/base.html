@@ -7,8 +7,10 @@
 <title>{% block title %}{% endblock %} · REC Helpdesk</title>
 <link rel="icon" href="{{ url_for('static', filename='rec-icon.png') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap"></noscript>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=static_v) }}">
+<script src="{{ url_for('static', filename='nav.js', v=static_v) }}" defer></script>
 </head>
 <body>
 {% macro icon(d) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{{ d|safe }}</svg>{% endmacro %}

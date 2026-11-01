@@ -207,3 +207,12 @@ details.drop[open] > summary { margin-bottom: 14px; }
 .gallery figure { margin: 0; }
 .gallery img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); display: block; }
 .gallery figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+/* smooth page changes */
+@view-transition { navigation: auto; }
+.side { view-transition-name: side; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .18s; }
+html.loading::after { content: ""; position: fixed; top: 0; left: 0; height: 3px; width: 100%; background: var(--gold, #f5b800); transform-origin: left; animation: navbar .9s ease-out forwards; z-index: 99; }
+html.loading .main { opacity: .65; transition: opacity .15s; }
+@keyframes navbar { from { transform: scaleX(0); } to { transform: scaleX(.9); } }
+@media (prefers-reduced-motion: reduce) { html.loading::after { animation: none; transform: scaleX(.9); } ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none; } }
