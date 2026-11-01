@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% from "_ui.html" import priority %}
+{% from "_ui.html" import pager %}
 {% block title %}Issues{% endblock %}
 {% block body %}
 {% set a = request.args %}
@@ -6,6 +7,7 @@
   <div><h1>Issues</h1><div class="muted">Report an issue from the asset's page. Helpdesk tickets will plug in here later.</div></div>
 </div>
 <form class="filters">
+  <input type="search" name="q" value="{{ a.q }}" aria-label="Search issues" placeholder="Search issue, fix, asset tag…">
   <select name="status" aria-label="Status">{% for s in ['Open', 'Resolved', 'All'] %}<option {{ 'selected' if status == s }}>{{ s }}</option>{% endfor %}</select>
   <select name="type" aria-label="Issue type"><option value="">All types</option>{% for t in ISSUE_TYPES %}<option {{ 'selected' if a.type == t }}>{{ t }}</option>{% endfor %}</select>
   <select name="building" aria-label="Building"><option value="">All buildings</option>
@@ -34,4 +36,5 @@
   {% else %}<tr><td colspan="6" class="empty">No issues here.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
+{{ pager(pg) }}
 {% endblock %}

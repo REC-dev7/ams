@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 # superseded v1
 old/
+uploads/

@@ -6,13 +6,14 @@ Separate system from the AMS (own database). Optional link: if the AMS database 
 tickets can point at an AMS asset tag and show its name and location (read-only).
 """
 import os
+import re
 import secrets
 import sqlite3
 import sys
 from datetime import datetime, timedelta
 from functools import wraps
 
-from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -42,6 +43,9 @@ CREATE TABLE IF NOT EXISTS tickets (
 CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY, ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id), body TEXT NOT NULL, system INTEGER DEFAULT 0, at TEXT);
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY, ticket_id INTEGER NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
+  file TEXT NOT NULL, user_id INTEGER REFERENCES users(id), at TEXT);
 """
 
 app = Flask(__name__)
@@ -51,7 +55,7 @@ if not os.path.exists(KEY_FILE):
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
 # own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
-app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=1024 * 1024)
+app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=12 * 1024 * 1024)
 
 
 def now():
@@ -80,6 +84,64 @@ def q(sql, args=(), one=False):
 def init_db():
     with sqlite3.connect(DB) as c:
         c.executescript(SCHEMA)
+
+
+def opt_int(v):
+    return int(v) if v and str(v).isdigit() else None
+
+
+# ---------- photos + pagination ----------
+
+UPLOADS = os.path.join(HERE, "uploads")
+MAX_PHOTO, MAX_PHOTOS, PER_PAGE = 4 * 1024 * 1024, 5, 50
+# real file type comes from the first bytes, never from the uploaded name or content-type (SVG/HTML are refused)
+IMAGE_MAGIC = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png", b"GIF87a": ".gif", b"GIF89a": ".gif"}
+
+
+def save_photos(field="photos"):
+    """Store up to 5 images from the form under random names. Returns (saved filenames, number refused)."""
+    saved, refused = [], 0
+    for f in request.files.getlist(field)[:MAX_PHOTOS]:
+        if not f.filename:
+            continue
+        data = f.read(MAX_PHOTO + 1)
+        ext = next((e for m, e in IMAGE_MAGIC.items() if data.startswith(m)), None)
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            ext = ".webp"
+        if not ext or len(data) > MAX_PHOTO:
+            refused += 1
+            continue
+        os.makedirs(UPLOADS, exist_ok=True)
+        name = secrets.token_hex(16) + ext
+        with open(os.path.join(UPLOADS, name), "wb") as fh:
+            fh.write(data)
+        saved.append(name)
+    if refused:
+        flash(f"{refused} file(s) skipped: use JPG, PNG, GIF or WebP up to 4 MB.", "error")
+    return saved, refused
+
+
+@app.route("/photos/<name>")
+def photo(name):  # behind the login guard like every page
+    if not re.fullmatch(r"[0-9a-f]{32}\.(jpg|png|gif|webp)", name):
+        abort(404)
+    return send_from_directory(UPLOADS, name)
+
+
+def paginate(sql, args=()):
+    """Run a SELECT one page at a time (?page=N). Returns (rows, {page, pages, total})."""
+    page = max(opt_int(request.args.get("page")) or 1, 1)
+    total = q(f"SELECT COUNT(*) n FROM ({sql})", args, one=True)["n"]
+    pages = max(-(-total // PER_PAGE), 1)
+    page = min(page, pages)
+    return q(sql + " LIMIT ? OFFSET ?", [*args, PER_PAGE, (page - 1) * PER_PAGE]), {"page": page, "pages": pages, "total": total}
+
+def attach(tid):
+    names, _ = save_photos()
+    for n in names:
+        db().execute("INSERT INTO attachments(ticket_id, file, user_id, at) VALUES (?,?,?,?)", (tid, n, g.user["id"], now()))
+    return len(names)
+
 
 
 # ---------- AMS link (read-only, optional) ----------
@@ -297,8 +359,8 @@ def tickets():
     if a.get("q"):
         sql += " AND (t.title LIKE ? OR t.description LIKE ? OR t.location LIKE ? OR t.asset_tag LIKE ?)"
         args += [f"%{a['q']}%"] * 4
-    rows = q(TICKET_SQL + sql + f" ORDER BY t.status IN ('Resolved','Closed'), {PRIO_ORDER}, t.due_at, t.id DESC LIMIT 500", args)
-    return render_template("tickets.html", rows=rows, scope=scope)
+    rows, pg = paginate(TICKET_SQL + sql + f" ORDER BY t.status IN ('Resolved','Closed'), {PRIO_ORDER}, t.due_at, t.id DESC", args)
+    return render_template("tickets.html", rows=rows, pg=pg, scope=scope)
 
 
 @app.route("/tickets/new", methods=["GET", "POST"])
@@ -322,6 +384,7 @@ def ticket_new():
                  prio, loc, tag, g.user["id"], created.strftime(FMT),
                  (created + timedelta(hours=SLA_HOURS[prio])).strftime(FMT)))
             note(cur.lastrowid, "Ticket raised")
+            attach(cur.lastrowid)
             db().commit()
             flash(f"Ticket HD-{cur.lastrowid:04d} raised. A technician will pick it up.", "ok")
             return redirect(url_for("ticket", tid=cur.lastrowid))
@@ -335,6 +398,8 @@ def ticket(tid):
         abort(404)
     return render_template(
         "ticket.html", t=t, asset=asset_for(t["asset_tag"]),
+        photos=[(p["file"], f"{p['who'] or ''} · {p['at'][:10]}") for p in q(
+            "SELECT a.*, u.name who FROM attachments a LEFT JOIN users u ON u.id=a.user_id WHERE a.ticket_id=? ORDER BY a.id", (tid,))],
         comments=q("SELECT c.*, u.name who FROM comments c LEFT JOIN users u ON u.id=c.user_id WHERE ticket_id=? ORDER BY c.id", (tid,)),
         techs=q("SELECT id, name, role FROM users WHERE role IN ('technician','admin') ORDER BY name"),
         sla=SLA_HOURS)
@@ -351,8 +416,12 @@ def get_ticket(tid):
 def ticket_comment(tid):
     get_ticket(tid)
     body = request.form.get("body", "").strip()
+    n = attach(tid)
     if body:
         note(tid, body, system=False)
+    if n:
+        note(tid, f"Added {n} photo(s)")
+    if body or n:
         db().commit()
     return redirect(url_for("ticket", tid=tid) + "#end")
 
@@ -433,7 +502,10 @@ def ticket_reopen(tid):
 @app.route("/users")
 @role("admin")
 def users():
-    return render_template("users.html", rows=q("SELECT * FROM users ORDER BY role, name"))
+    term = request.args.get("q", "").strip()
+    rows, pg = paginate("SELECT * FROM users" + (" WHERE name LIKE ? OR username LIKE ?" if term else "") + " ORDER BY role, name",
+                        [f"%{term}%"] * 2 if term else [])
+    return render_template("users.html", rows=rows, pg=pg)
 
 
 @app.route("/users/add", methods=["POST"])
@@ -487,6 +559,11 @@ def user_delete(uid):
 def bad_request(e):
     msg = "That form expired. Go back, refresh the page and try again." if "expired" in str(e.description) else "Bad request."
     return render_template("error.html", msg=msg), 400
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return render_template("error.html", msg="That upload is too big. Photos can be 4 MB each, up to 5 at a time."), 413
 
 
 @app.errorhandler(403)

@@ -106,6 +106,30 @@ def test_flow():
     post(c, f"/assets/{pc2}/lend", {"action": "return"})
     assert b"Dr. X" not in c.get("/loans").data
 
+    # photos: image bytes accepted (random name, login required), fake image refused, shown on asset page
+    png = bytes.fromhex("89504e470d0a1a0a") + b"0" * 20
+    r = c.post(f"/assets/{pc}/issues", data={"csrf": csrf(c, "/"), "title": "Cracked screen", "photos": [(io.BytesIO(png), "a.png"), (io.BytesIO(b"<html>"), "b.png")]},
+               content_type="multipart/form-data")
+    assert r.status_code == 302
+    page = c.get(f"/assets/{pc}").data.decode()
+    name = re.search(r"/photos/([0-9a-f]{32}[.]png)", page).group(1)
+    assert page.count("/photos/") == 2 and "Issue: Cracked screen" in page  # one <a>, one <img>
+    assert c.get(f"/photos/{name}").data == png and c.get("/photos/../app.py").status_code == 404
+    assert "skipped" in page
+    anon = m.app.test_client()
+    assert anon.get(f"/photos/{name}").status_code == 302
+    r = c.post("/assets/%d/photos" % pc, data={"csrf": csrf(c, "/"), "photos": (io.BytesIO(b"x" * (m.MAX_PHOTO + 1)), "big.png")}, content_type="multipart/form-data")
+    assert r.status_code == 302 and c.get(f"/assets/{pc}").data.decode().count("/photos/") == 2
+
+    # pagination + search
+    m.PER_PAGE = 2
+    page2 = c.get("/assets?page=2").data.decode()
+    assert "Page 2 of" in page2 and "Previous" in page2
+    assert "Page 1 of" in c.get("/assets?page=999&parts=1").data.decode() or "Page" in c.get("/assets?page=999").data.decode()
+    assert b"Cracked screen" in c.get("/issues?q=cracked").data and b"Cracked screen" not in c.get("/issues?q=zzzz").data
+    assert c.get("/users?q=admin").status_code == 200 and c.get("/services?q=Repair").status_code == 200
+    m.PER_PAGE = 50
+
     # can't delete parent with parts; staff role limits
     assert post(c, f"/assets/{pc}/delete", {}).location.endswith(f"/assets/{pc}")
     post(c, "/users/add", {"name": "Staff", "username": "staff", "role": "staff", "password": "staffpass1"}, "/users")

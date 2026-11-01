@@ -1,9 +1,10 @@
 {% extends "base.html" %}{% from "_ui.html" import status %}
+{% from "_ui.html" import pager %}
 {% block title %}Assets{% endblock %}
 {% block body %}
 {% set a = request.args %}
 <div class="head">
-  <div><h1>Assets</h1><div class="muted">{{ rows|length }} shown</div></div>
+  <div><h1>Assets</h1><div class="muted">{{ pg.total }} assets</div></div>
   <div class="actions">
     <a class="btn ghost" href="{{ url_for('assets', **dict(a, export='csv')) }}">Export CSV</a>
     {% if can('admin') %}<a class="btn ghost" href="{{ url_for('asset_import') }}">Import CSV</a>{% endif %}
@@ -42,4 +43,5 @@
   {% else %}<tr><td colspan="7" class="empty">No assets match.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
+{{ pager(pg) }}
 {% endblock %}

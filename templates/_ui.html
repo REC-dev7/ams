@@ -6,6 +6,23 @@
 <span class="chip plain {{ {'High':'bad','Medium':'warn'}.get(p, '') }}">{{ p }}</span>
 {%- endmacro %}
 
+{% macro pager(p) -%}
+{% if p.pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if p.page > 1 %}<a class="btn sm ghost" href="?{{ dict(request.args.to_dict(), page=p.page - 1)|urlencode }}">&larr; Previous</a>{% endif %}
+  <span class="muted">Page {{ p.page }} of {{ p.pages }} &middot; {{ p.total }} total</span>
+  {% if p.page < p.pages %}<a class="btn sm ghost" href="?{{ dict(request.args.to_dict(), page=p.page + 1)|urlencode }}">Next &rarr;</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro gallery(items, empty='') -%}
+{% if items %}<div class="gallery">{% for f, caption in items %}
+  <figure><a href="{{ url_for('photo', name=f) }}" target="_blank" rel="noopener"><img src="{{ url_for('photo', name=f) }}" alt="{{ caption or 'Photo' }}" loading="lazy"></a>
+  {% if caption %}<figcaption>{{ caption }}</figcaption>{% endif %}</figure>{% endfor %}</div>
+{% elif empty %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}
+
 {% macro bar_list(rows) -%}
 {% for r in rows %}
 <div class="bar-row" title="{{ r.label }}: {{ r.n }}">

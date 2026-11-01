@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% from "_ui.html" import status, priority, due %}
+{% from "_ui.html" import gallery %}
 {% block title %}HD-{{ '%04d'|format(t.id) }} {{ t.title }}{% endblock %}
 {% block body %}
 {% set is_staff_side = can('admin', 'technician') %}
@@ -30,6 +31,10 @@
   {% if t.description %}<p style="margin:14px 0 0;white-space:pre-line">{{ t.description }}</p>{% endif %}
   {% if t.resolution %}<p style="margin:14px 0 0"><b>Fix:</b> {{ t.resolution }}</p>{% endif %}
 </div>
+
+{% if photos %}
+<div class="card" style="margin-bottom:16px"><h2>Photos</h2>{{ gallery(photos) }}</div>
+{% endif %}
 
 {% if t.asset_tag %}
 <div class="card" style="margin-bottom:16px">
@@ -80,8 +85,9 @@
       <div class="when">{{ c.at[:16] }}{% if c.system and c.who %} · {{ c.who }}{% endif %}</div></li>
     {% endfor %}
   </ul>
-  <form method="post" action="{{ url_for('ticket_comment', tid=t.id) }}" class="actions" id="end" style="margin-top:12px;flex-wrap:nowrap">{{ csrf }}
-    <input name="body" required aria-label="Add an update" placeholder="Add a comment or update…" style="flex:1">
+  <form method="post" action="{{ url_for('ticket_comment', tid=t.id) }}" enctype="multipart/form-data" class="actions" id="end" style="margin-top:12px">{{ csrf }}
+    <input name="body" aria-label="Add an update" placeholder="Add a comment or update…" style="flex:1;min-width:200px">
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple aria-label="Photos">
     <button class="btn">Post</button>
   </form>
 </div>

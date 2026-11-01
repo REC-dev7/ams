@@ -6,13 +6,14 @@ Demo data:  python app.py --demo    (adds sample buildings, labs and assets, the
 import csv
 import io
 import os
+import re
 import secrets
 import sqlite3
 import sys
 from datetime import date, timedelta
 from functools import wraps
 
-from flask import Flask, Response, abort, flash, g, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, g, redirect, render_template, request, send_from_directory, session, url_for
 from markupsafe import Markup
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -62,6 +63,10 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE TABLE IF NOT EXISTS activity (
   id INTEGER PRIMARY KEY, asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
   user_id INTEGER REFERENCES users(id), text TEXT NOT NULL, at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS photos (
+  id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  issue_id INTEGER REFERENCES issues(id) ON DELETE SET NULL, file TEXT NOT NULL,
+  uploaded_by INTEGER REFERENCES users(id), at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 
 app = Flask(__name__)
@@ -71,7 +76,7 @@ if not os.path.exists(KEY_FILE):
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
 # own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
-app.config.update(SESSION_COOKIE_NAME="ams_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=5 * 1024 * 1024)
+app.config.update(SESSION_COOKIE_NAME="ams_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=12 * 1024 * 1024)
 
 
 # ---------- db helpers ----------
@@ -136,6 +141,61 @@ def log(asset_id, text):
 
 def opt_int(v):
     return int(v) if v and str(v).isdigit() else None
+
+# ---------- photos + pagination ----------
+
+UPLOADS = os.path.join(HERE, "uploads")
+MAX_PHOTO, MAX_PHOTOS, PER_PAGE = 4 * 1024 * 1024, 5, 50
+# real file type comes from the first bytes, never from the uploaded name or content-type (SVG/HTML are refused)
+IMAGE_MAGIC = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png", b"GIF87a": ".gif", b"GIF89a": ".gif"}
+
+
+def save_photos(field="photos"):
+    """Store up to 5 images from the form under random names. Returns (saved filenames, number refused)."""
+    saved, refused = [], 0
+    for f in request.files.getlist(field)[:MAX_PHOTOS]:
+        if not f.filename:
+            continue
+        data = f.read(MAX_PHOTO + 1)
+        ext = next((e for m, e in IMAGE_MAGIC.items() if data.startswith(m)), None)
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            ext = ".webp"
+        if not ext or len(data) > MAX_PHOTO:
+            refused += 1
+            continue
+        os.makedirs(UPLOADS, exist_ok=True)
+        name = secrets.token_hex(16) + ext
+        with open(os.path.join(UPLOADS, name), "wb") as fh:
+            fh.write(data)
+        saved.append(name)
+    if refused:
+        flash(f"{refused} file(s) skipped: use JPG, PNG, GIF or WebP up to 4 MB.", "error")
+    return saved, refused
+
+
+@app.route("/photos/<name>")
+def photo(name):  # behind the login guard like every page
+    if not re.fullmatch(r"[0-9a-f]{32}\.(jpg|png|gif|webp)", name):
+        abort(404)
+    return send_from_directory(UPLOADS, name)
+
+
+def paginate(sql, args=()):
+    """Run a SELECT one page at a time (?page=N). Returns (rows, {page, pages, total})."""
+    page = max(opt_int(request.args.get("page")) or 1, 1)
+    total = q(f"SELECT COUNT(*) n FROM ({sql})", args, one=True)["n"]
+    pages = max(-(-total // PER_PAGE), 1)
+    page = min(page, pages)
+    return q(sql + " LIMIT ? OFFSET ?", [*args, PER_PAGE, (page - 1) * PER_PAGE]), {"page": page, "pages": pages, "total": total}
+
+def attach_photos(aid, issue_id=None):
+    names, _ = save_photos()
+    for n in names:
+        db().execute("INSERT INTO photos(asset_id, issue_id, file, uploaded_by) VALUES (?,?,?,?)", (aid, issue_id, n, g.user["id"]))
+    if names:
+        log(aid, f"{len(names)} photo(s) added")
+    return len(names)
+
 
 
 def opt_float(v, label):
@@ -410,14 +470,15 @@ def asset_filters():
 @app.route("/assets")
 def assets():
     where, args = asset_filters()
-    rows = q(ASSET_SELECT + where + " ORDER BY a.id DESC", args)
+    order = " ORDER BY a.id DESC"
     if request.args.get("export") == "csv":
+        rows = q(ASSET_SELECT + where + order, args)
         # same columns as import, so an export can be edited and re-imported elsewhere
         src = {"category": "cat"}
         return csv_response(f"assets-{date.today()}.csv", IMPORT_COLS,
                             [[r[src.get(c, c)] for c in IMPORT_COLS] for r in rows])
-    # ponytail: no pagination; add LIMIT/OFFSET when asset count passes a few thousand
-    return render_template("assets.html", rows=rows, **lookups())
+    rows, pg = paginate(ASSET_SELECT + where + order, args)
+    return render_template("assets.html", rows=rows, pg=pg, **lookups())
 
 
 IMPORT_COLS = ["tag", "name", "category", "building", "room", "status", "brand", "model", "serial_no", "ip_address",
@@ -604,6 +665,8 @@ def asset(aid):
                     LEFT JOIN users ru ON ru.id=i.resolved_by WHERE i.asset_id=?
                     ORDER BY i.status='Resolved', i.id DESC""", (aid,)),
         services=q("SELECT * FROM services WHERE asset_id=? ORDER BY date DESC, id DESC", (aid,)),
+        photos=[(p["file"], f"Issue: {p['issue']}" if p["issue"] else p["at"][:10]) for p in q(
+            "SELECT p.*, i.title issue FROM photos p LEFT JOIN issues i ON i.id=p.issue_id WHERE p.asset_id=? ORDER BY p.id DESC", (aid,))],
         activity=q("""SELECT ac.*, u.name who FROM activity ac LEFT JOIN users u ON u.id=ac.user_id
                       WHERE ac.asset_id=? ORDER BY ac.id DESC LIMIT 30""", (aid,)),
     )
@@ -676,8 +739,14 @@ def asset_delete(aid):
     if q("SELECT 1 FROM assets WHERE parent_id=? LIMIT 1", (aid,), one=True):
         flash("Remove or move its parts first.", "error")
         return redirect(url_for("asset", aid=aid))
+    files = [r["file"] for r in q("SELECT file FROM photos WHERE asset_id=?", (aid,))]
     db().execute("DELETE FROM assets WHERE id=?", (aid,))
     db().commit()
+    for name in files:
+        try:
+            os.remove(os.path.join(UPLOADS, name))
+        except OSError:
+            pass
     flash("Asset deleted.", "ok")
     return redirect(url_for("assets"))
 
@@ -693,15 +762,28 @@ def issue_new(aid):
     if not f.get("title", "").strip():
         flash("Describe the issue.", "error")
         return redirect(url_for("asset", aid=aid))
-    db().execute("INSERT INTO issues(asset_id, title, type, priority, description, reported_by) VALUES (?,?,?,?,?,?)",
+    cur = db().execute("INSERT INTO issues(asset_id, title, type, priority, description, reported_by) VALUES (?,?,?,?,?,?)",
                  (aid, f["title"].strip(), f.get("type") if f.get("type") in ISSUE_TYPES else "Other",
                   f.get("priority") if f.get("priority") in PRIORITIES else "Medium", f.get("description"), g.user["id"]))
     log(aid, f"Issue reported: {f['title'].strip()}")
     if f.get("mark_faulty") and a["status"] == "Working":
         db().execute("UPDATE assets SET status='Faulty' WHERE id=?", (aid,))
         log(aid, "Status: Working → Faulty")
+    attach_photos(aid, cur.lastrowid)
     db().commit()
     flash("Issue reported.", "ok")
+    return redirect(url_for("asset", aid=aid))
+
+
+@app.route("/assets/<int:aid>/photos", methods=["POST"])
+@role("admin", "technician")
+def asset_photos(aid):
+    if not q("SELECT 1 FROM assets WHERE id=?", (aid,), one=True):
+        abort(404)
+    n = attach_photos(aid)
+    db().commit()
+    if n:
+        flash(f"{n} photo(s) added.", "ok")
     return redirect(url_for("asset", aid=aid))
 
 
@@ -741,8 +823,12 @@ def issues():
     if opt_int(a.get("building")):
         sql += " AND r.building_id=?"
         args.append(int(a["building"]))
+    if a.get("q", "").strip():
+        sql += " AND (i.title LIKE ? OR i.description LIKE ? OR i.resolution LIKE ? OR x.tag LIKE ? OR x.name LIKE ?)"
+        args += [f"%{a['q'].strip()}%"] * 5
     sql += " ORDER BY i.status='Resolved', CASE i.priority WHEN 'High' THEN 0 WHEN 'Medium' THEN 1 ELSE 2 END, i.id DESC"
-    return render_template("issues.html", rows=q(sql, args), status=status,
+    rows, pg = paginate(sql, args)
+    return render_template("issues.html", rows=rows, pg=pg, status=status,
                            buildings=q("SELECT * FROM buildings ORDER BY name"))
 
 
@@ -780,9 +866,12 @@ def service_new(aid):
 def services():
     soon = (date.today() + timedelta(days=30)).isoformat()
     due = q(ASSET_SELECT + " WHERE a.next_service_due IS NOT NULL AND a.next_service_due <= ? AND a.status!='Scrapped' ORDER BY a.next_service_due", (soon,))
-    rows = q("""SELECT s.*, a.tag, a.name asset_name, r.name room FROM services s JOIN assets a ON a.id=s.asset_id
-                LEFT JOIN rooms r ON r.id=a.room_id ORDER BY s.date DESC, s.id DESC LIMIT 200""")
-    return render_template("services.html", due=due, rows=rows)
+    term = request.args.get("q", "").strip()
+    rows, pg = paginate("""SELECT s.*, a.tag, a.name asset_name, r.name room FROM services s JOIN assets a ON a.id=s.asset_id
+                LEFT JOIN rooms r ON r.id=a.room_id"""
+                + (" WHERE a.tag LIKE ? OR a.name LIKE ? OR s.description LIKE ? OR s.done_by LIKE ? OR s.type LIKE ?" if term else "")
+                + " ORDER BY s.date DESC, s.id DESC", [f"%{term}%"] * 5 if term else [])
+    return render_template("services.html", due=due, rows=rows, pg=pg)
 
 
 # ---------- labels ----------
@@ -878,7 +967,10 @@ def settings_delete(kind, item):
 @app.route("/users")
 @role("admin")
 def users():
-    return render_template("users.html", rows=q("SELECT * FROM users ORDER BY role, name"))
+    term = request.args.get("q", "").strip()
+    rows, pg = paginate("SELECT * FROM users" + (" WHERE name LIKE ? OR username LIKE ?" if term else "") + " ORDER BY role, name",
+                        [f"%{term}%"] * 2 if term else [])
+    return render_template("users.html", rows=rows, pg=pg)
 
 
 @app.route("/users/add", methods=["POST"])
@@ -948,6 +1040,11 @@ def server_error(_):
 def bad_request(e):
     msg = "That form expired. Go back, refresh the page and try again." if "expired" in str(e.description) else "Bad request."
     return render_template("error.html", msg=msg), 400
+
+
+@app.errorhandler(413)
+def too_large(_):
+    return render_template("error.html", msg="That upload is too big. Photos can be 4 MB each, up to 5 at a time."), 413
 
 
 @app.errorhandler(403)

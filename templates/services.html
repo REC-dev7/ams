@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% from "_ui.html" import status %}
+{% from "_ui.html" import pager %}
 {% block title %}Service log{% endblock %}
 {% block body %}
 <div class="head"><div><h1>Service log</h1><div class="muted">Repairs, maintenance and upgrades. Log new work from the asset's page.</div></div></div>
@@ -19,6 +20,7 @@
 
 <div class="card flush">
   <h2>History</h2>
+  <form class="filters" style="margin:0 16px 12px"><input type="search" name="q" value="{{ request.args.q }}" aria-label="Search service history" placeholder="Search asset, work done, who…"><button class="btn">Search</button></form>
   <div class="table-wrap"><table>
     <thead><tr><th>Date</th><th>Asset</th><th>Type</th><th>Work done</th><th>By</th><th class="num">Cost</th></tr></thead>
     <tbody>
@@ -30,4 +32,5 @@
     </tbody>
   </table></div>
 </div>
+{{ pager(pg) }}
 {% endblock %}

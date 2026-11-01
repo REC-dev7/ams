@@ -1,4 +1,5 @@
 """Smoke test: python test_helpdesk.py"""
+import io
 import os
 import re
 import sqlite3
@@ -107,6 +108,29 @@ def test_flow():
     for page in ["/", "/tickets", "/tickets?scope=all&mine=1&unassigned=1", "/tickets/new", f"/tickets/{tid}", "/users", "/account"]:
         assert c.get(page).status_code == 200, page
     assert c.get("/tickets/9999").status_code == 404
+
+    # photos on a new ticket and on a comment; fake image refused; login required; oversized upload gets a themed page
+    png = bytes.fromhex("89504e470d0a1a0a") + b"0" * 20
+    r = c.post("/tickets/new", data={"csrf": csrf(c, "/tickets/new"), "title": "Screen cracked", "category": "Hardware", "priority": "Low",
+                                     "photos": [(io.BytesIO(png), "a.png"), (io.BytesIO(b"<html>"), "b.png")]}, content_type="multipart/form-data")
+    pid = int(r.location.rsplit("/", 1)[1])
+    page = c.get(f"/tickets/{pid}").data.decode()
+    name = re.search(r"/photos/([0-9a-f]{32}[.]png)", page).group(1)
+    assert "skipped" in page and c.get(f"/photos/{name}").data == png and c.get("/photos/..%2Fapp.py").status_code == 404
+    assert m.app.test_client().get(f"/photos/{name}").status_code == 302
+    c.post(f"/tickets/{pid}/comment", data={"csrf": csrf(c, f"/tickets/{pid}"), "photos": (io.BytesIO(png), "c.png")}, content_type="multipart/form-data")
+    page = c.get(f"/tickets/{pid}").data.decode()
+    assert page.count("<img") >= 2 and "Added 1 photo" in page
+    big = io.BytesIO(b"x" * (13 * 1024 * 1024))
+    r = c.post(f"/tickets/{pid}/comment", data={"csrf": csrf(c, f"/tickets/{pid}"), "photos": (big, "big.png")}, content_type="multipart/form-data")
+    assert r.status_code == 413 and b"too big" in r.data
+
+    # pagination + search
+    m.PER_PAGE = 2
+    assert "Page 2 of" in c.get("/tickets?scope=all&page=2").data.decode()
+    assert b"Screen cracked" in c.get("/tickets?scope=all&q=cracked").data
+    assert c.get("/users?q=admin").status_code == 200 and c.get("/tickets?scope=all&page=999").status_code == 200
+    m.PER_PAGE = 50
 
     # works with no AMS present
     m.AMS_DB = os.path.join(tmp, "missing.db")

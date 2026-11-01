@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% from "_ui.html" import status, priority %}
+{% from "_ui.html" import gallery %}
 {% block title %}{{ a.tag }} {{ a.name }}{% endblock %}
 {% block body %}
 <div class="head">
@@ -76,17 +77,28 @@
 </div>
 {% endif %}
 
+<div class="card" style="margin-bottom:16px">
+  <h2>Photos</h2>
+  {{ gallery(photos, 'No photos yet.') }}
+  {% if can('admin', 'technician') %}
+  <form method="post" action="{{ url_for('asset_photos', aid=a.id) }}" enctype="multipart/form-data" class="actions">{{ csrf }}
+    <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple required aria-label="Photos">
+    <button class="btn sm">Add photos</button>
+  </form>{% endif %}
+</div>
+
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card">
     <details class="drop">
       <summary class="head" style="margin:0"><h2 style="margin:0">Issues</h2><span class="btn sm">Report issue</span></summary>
-      <form method="post" action="{{ url_for('issue_new', aid=a.id) }}" class="stack" style="margin-bottom:16px">{{ csrf }}
+      <form method="post" action="{{ url_for('issue_new', aid=a.id) }}" enctype="multipart/form-data" class="stack" style="margin-bottom:16px">{{ csrf }}
         <label>What's wrong? <input name="title" required placeholder="e.g. System not booting, network weak"></label>
         <div class="form-grid">
           <label>Type <select name="type">{% for t in ISSUE_TYPES %}<option>{{ t }}</option>{% endfor %}</select></label>
           <label>Priority <select name="priority">{% for p in PRIORITIES %}<option {{ 'selected' if p == 'Medium' }}>{{ p }}</option>{% endfor %}</select></label>
         </div>
         <label>Details <textarea name="description"></textarea></label>
+        <label>Photos (optional) <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label>
         <label class="check"><input type="checkbox" name="mark_faulty" value="1"> Mark asset as Faulty</label>
         <div><button class="btn">Submit issue</button></div>
       </form>

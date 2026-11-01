@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% block title %}Users{% endblock %}
+{% from "_ui.html" import pager %}
 {% block body %}
 <div class="head"><div><h1>Users</h1>
   <div class="muted"><b>Admin</b>: everything · <b>Technician</b>: add/edit assets, log service, resolve issues · <b>Staff</b>: view and report issues</div></div></div>
@@ -14,6 +15,8 @@
   </form>
 </div>
 
+<form class="filters"><input type="search" name="q" value="{{ request.args.q }}" aria-label="Search users" placeholder="Search name or username…"><button class="btn">Search</button></form>
+
 <div class="card flush"><div class="table-wrap"><table>
   <thead><tr><th>Name</th><th>Username</th><th>Role / reset password</th><th></th></tr></thead>
   <tbody>
@@ -27,4 +30,5 @@
   {% endfor %}
   </tbody>
 </table></div></div>
+{{ pager(pg) }}
 {% endblock %}
