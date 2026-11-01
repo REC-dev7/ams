@@ -1,0 +1,58 @@
+{% extends "base.html" %}{% block title %}Stock register{% endblock %}
+{% macro money(v) %}{{ '₹{:,.0f}'.format(v) if v is not none else '—' }}{% endmacro %}
+{% block body %}
+{% set a = request.args %}
+<div class="head no-print">
+  <div><h1>Stock register</h1><div class="muted">Room-wise stock list for audits. Book value is straight-line over each category's useful life.</div></div>
+  <div class="actions">
+    <form class="actions">
+      <select name="building" aria-label="Building"><option value="">All buildings</option>
+        {% for b in buildings %}<option value="{{ b.id }}" {{ 'selected' if a.building == b.id|string }}>{{ b.name }}</option>{% endfor %}</select>
+      <select name="room" aria-label="Room"><option value="">All rooms</option>
+        {% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if a.room == r.id|string }}>{{ r.building }} · {{ r.name }}</option>{% endfor %}</select>
+      <button class="btn ghost">Show</button>
+    </form>
+    <button class="btn" onclick="print()">Print</button>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:14px">
+  <div class="facts">
+    <div><span>Institution</span><b>Rajalakshmi Engineering College</b></div>
+    <div><span>Items</span><b>{{ total }}</b></div>
+    <div><span>Purchase cost</span><b>{{ money(cost) }}</b></div>
+    <div><span>Current book value</span><b>{{ money(book) }}</b></div>
+    <div><span>Printed</span><b>{{ today }}</b></div>
+  </div>
+</div>
+
+{% for (building, room), items in groups.items() %}
+<div class="card flush register" style="margin-bottom:14px">
+  <h2>{{ building }} · {{ room }} <span class="muted">({{ items|length }})</span></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Tag</th><th>Description</th><th>Serial no</th><th>Purchased</th><th class="num">Cost</th><th class="num">Book value</th><th>Status</th><th>Verified</th></tr></thead>
+    <tbody>
+    {% for x in items %}
+      <tr class="{{ 'part' if x.parent_id }}">
+        <td>{{ loop.index }}</td>
+        <td class="mono">{{ x.tag }}</td>
+        <td>{{ '↳ ' if x.parent_id }}{{ x.name }}<div class="muted" style="font-size:12px">{{ x.cat or '' }}{% if x.brand or x.model %} · {{ x.brand or '' }} {{ x.model or '' }}{% endif %}</div></td>
+        <td class="mono">{{ x.serial_no or '' }}</td>
+        <td>{{ x.purchase_date or '' }}</td>
+        <td class="num">{{ money(x.cost) }}</td>
+        <td class="num">{{ money(book_value(x.cost, x.purchase_date, x.life_years)) }}</td>
+        <td>{{ x.status }}</td>
+        <td>{% if x.last_audit %}<span class="{{ 'chip plain warn' if x.last_audit < audit_cutoff }}">{{ x.last_audit }}</span>{% else %}<span class="muted">never</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card empty">Nothing to list.</div>
+{% endfor %}
+
+<div class="print-only" style="margin-top:40px;display:flex;justify-content:space-between">
+  <span>Verified by (Lab in-charge): ____________________</span><span>HOD: ____________________</span><span>Principal: ____________________</span>
+</div>
+{% endblock %}

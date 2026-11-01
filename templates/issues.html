@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% from "_ui.html" import priority %}
+{% block title %}Issues{% endblock %}
+{% block body %}
+{% set a = request.args %}
+<div class="head">
+  <div><h1>Issues</h1><div class="muted">Report an issue from the asset's page. Helpdesk tickets will plug in here later.</div></div>
+</div>
+<form class="filters">
+  <select name="status" aria-label="Status">{% for s in ['Open', 'Resolved', 'All'] %}<option {{ 'selected' if status == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="type" aria-label="Issue type"><option value="">All types</option>{% for t in ISSUE_TYPES %}<option {{ 'selected' if a.type == t }}>{{ t }}</option>{% endfor %}</select>
+  <select name="building" aria-label="Building"><option value="">All buildings</option>
+    {% for b in buildings %}<option value="{{ b.id }}" {{ 'selected' if a.building == b.id|string }}>{{ b.name }}</option>{% endfor %}</select>
+  <button class="btn">Filter</button>
+</form>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Priority</th><th>Issue</th><th>Asset</th><th>Where</th><th>Reported</th><th></th></tr></thead>
+  <tbody>
+  {% for i in rows %}
+    <tr>
+      <td>{{ priority(i.priority) }}</td>
+      <td><b>{{ i.title }}</b><div class="muted" style="font-size:12px">{{ i.type }}</div>
+        {% if i.status == 'Resolved' %}<div style="font-size:13px"><span class="chip good">Resolved</span> {{ i.resolution or '' }}</div>{% endif %}</td>
+      <td><a class="mono" href="{{ url_for('asset', aid=i.asset_id) }}">{{ i.tag }}</a><div style="font-size:12px">{{ i.asset_name }}</div></td>
+      <td>{{ i.room }}<div class="muted" style="font-size:12px">{{ i.building }}</div></td>
+      <td>{{ i.reported_at[:16] }}<div class="muted" style="font-size:12px">{{ i.reporter or '' }}</div></td>
+      <td>{% if i.status == 'Open' and can('admin', 'technician') %}
+        <form method="post" action="{{ url_for('issue_resolve', iid=i.id) }}" class="actions">{{ csrf }}
+          <input type="hidden" name="back" value="{{ request.full_path }}">
+          <input name="resolution" aria-label="Fix done" placeholder="Fix done" style="width:140px">
+          <input type="hidden" name="mark_working" value="1">
+          <button class="btn sm">Resolve</button>
+        </form>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="6" class="empty">No issues here.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

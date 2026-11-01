@@ -1,0 +1,26 @@
+{% extends "base.html" %}{% block title %}QR labels{% endblock %}
+{% block body %}
+<div class="head no-print">
+  <div><h1>QR labels</h1><div class="muted">Scan a label to open the asset's page. Print on sticker sheets.</div></div>
+  <div class="actions">
+    <form class="actions"><select name="room" aria-label="Room" onchange="this.form.submit()"><option value="">Pick a room…</option>
+      {% for r in rooms %}<option value="{{ r.id }}" {{ 'selected' if rid == r.id }}>{{ r.building }} · {{ r.name }}</option>{% endfor %}</select></form>
+    {% if rows %}<button class="btn" onclick="print()">Print</button>{% endif %}
+  </div>
+</div>
+<div class="labels">
+  {% for a in rows %}
+  <div class="label-card">
+    <div class="qr" data-url="{{ url_for('asset', aid=a.id, _external=True) }}"></div>
+    <div><b class="mono">{{ a.tag }}</b><small>{{ a.name }}</small><small>{{ a.room }}, {{ a.building }}</small><small>REC · Asset Management</small></div>
+  </div>
+  {% else %}<p class="muted">Pick a room to print labels for everything in it.</p>{% endfor %}
+</div>
+{% if rows %}
+<!-- ponytail: QR drawn client-side from CDN; vendor the file if the campus has no internet -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+document.querySelectorAll('.qr').forEach(el => new QRCode(el, { text: el.dataset.url, width: 84, height: 84, correctLevel: QRCode.CorrectLevel.M }));
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Buildings & rooms{% endblock %}
+{% block body %}
+<div class="head">
+  <div><h1>Buildings &amp; rooms</h1><div class="muted">Open a lab, classroom or office to see everything in it</div></div>
+  {% if can('admin') %}<a class="btn ghost" href="{{ url_for('settings') }}#rooms">Manage locations</a>{% endif %}
+</div>
+{% for b in buildings %}
+<section class="building">
+  <h2>{{ b.name }} {% if b.code %}<span class="muted mono">{{ b.code }}</span>{% endif %}</h2>
+  <div class="rooms">
+    {% for r in rooms.get(b.id, []) %}
+    <a class="room" href="{{ url_for('room', rid=r.id) }}">
+      <div class="t">{{ r.name }}</div>
+      <div class="meta">{{ r.type }}{% if r.floor %} · Floor {{ r.floor }}{% endif %}</div>
+      <div class="nums">
+        <span><b>{{ r.assets }}</b> item{{ 's' if r.assets != 1 }}</span>
+        {% if r.down %}<span class="chip bad">{{ r.down }} down</span>{% endif %}
+        {% if r.issues %}<span class="chip warn">{{ r.issues }} issue{{ 's' if r.issues > 1 }}</span>{% endif %}
+      </div>
+    </a>
+    {% else %}<p class="muted">No rooms in this building yet.</p>{% endfor %}
+  </div>
+</section>
+{% else %}
+<div class="card empty">No buildings yet. {% if can('admin') %}<a href="{{ url_for('settings') }}">Add buildings and rooms</a> to get started.{% endif %}</div>
+{% endfor %}
+{% endblock %}

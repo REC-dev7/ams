@@ -1,0 +1,51 @@
+{% extends "base.html" %}{% block title %}Locations & categories{% endblock %}
+{% macro del(kind, item) %}{% if not item.n %}
+<form method="post" action="{{ url_for('settings_delete', kind=kind, item=item.id) }}" onsubmit="return confirm('Delete {{ item.name }}?')">{{ csrf }}<button class="btn danger sm">Delete</button></form>
+{% endif %}{% endmacro %}
+{% block body %}
+<div class="head"><div><h1>Locations &amp; categories</h1><div class="muted">Set up your campus: buildings → rooms (labs, classrooms, offices) and equipment categories</div></div></div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card flush" id="buildings">
+    <h2>Buildings</h2>
+    <form method="post" action="{{ url_for('settings_add', kind='buildings') }}" class="filters" style="padding:0 18px">{{ csrf }}
+      <input name="name" placeholder="Building name" required><input name="code" placeholder="Code (CSE)" style="min-width:90px;width:110px"><button class="btn">Add</button>
+    </form>
+    <table><thead><tr><th>Name</th><th>Code</th><th class="num">Rooms</th><th></th></tr></thead><tbody>
+      {% for b in buildings %}<tr><td>{{ b.name }}</td><td class="mono">{{ b.code or '' }}</td><td class="num">{{ b.n }}</td><td>{{ del('buildings', b) }}</td></tr>
+      {% else %}<tr><td colspan="4" class="empty">Add your first building.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="card flush" id="categories">
+    <h2>Equipment categories</h2>
+    <form method="post" action="{{ url_for('settings_add', kind='categories') }}" class="filters" style="padding:0 18px">{{ csrf }}
+      <input name="name" placeholder="New category" required>
+      <input name="life_years" type="number" min="1" max="50" placeholder="Life (yrs)" aria-label="Useful life in years" style="min-width:90px;width:110px">
+      <button class="btn">Add</button>
+    </form>
+    <div style="max-height:360px;overflow:auto"><table><thead><tr><th>Category</th><th>Useful life</th><th class="num">Assets</th><th></th></tr></thead><tbody>
+      {% for c in categories %}<tr><td>{{ c.name }}</td>
+        <td><form method="post" action="{{ url_for('category_life', item=c.id) }}" class="actions" style="flex-wrap:nowrap">{{ csrf }}
+          <input name="life_years" type="number" min="1" max="50" value="{{ c.life_years or 5 }}" aria-label="Useful life of {{ c.name }}" style="width:64px;padding:4px 6px">
+          <button class="btn sm ghost">Set</button></form></td>
+        <td class="num">{{ c.n }}</td><td>{{ del('categories', c) }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </div>
+</div>
+
+<div class="card flush" id="rooms">
+  <h2>Rooms</h2>
+  <form method="post" action="{{ url_for('settings_add', kind='rooms') }}" class="filters" style="padding:0 18px">{{ csrf }}
+    <select name="building_id" required><option value="">Building…</option>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>
+    <input name="name" placeholder="Room name (Computer Lab 3)" required>
+    <select name="type">{% for t in ROOM_TYPES %}<option>{{ t }}</option>{% endfor %}</select>
+    <input name="floor" placeholder="Floor" style="min-width:70px;width:80px">
+    <button class="btn">Add room</button>
+  </form>
+  <div class="table-wrap"><table><thead><tr><th>Building</th><th>Room</th><th>Type</th><th>Floor</th><th class="num">Assets</th><th></th></tr></thead><tbody>
+    {% for r in rooms %}<tr><td>{{ r.building }}</td><td><a href="{{ url_for('room', rid=r.id) }}">{{ r.name }}</a></td><td>{{ r.type }}</td><td>{{ r.floor or '' }}</td><td class="num">{{ r.n }}</td><td>{{ del('rooms', r) }}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">No rooms yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+</div>
+{% endblock %}

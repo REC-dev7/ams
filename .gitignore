@@ -1,0 +1,7 @@
+# local data and secrets, never commit
+*.db
+secret.key
+__pycache__/
+*.pyc
+# superseded v1
+old/

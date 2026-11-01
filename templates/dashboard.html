@@ -1,0 +1,63 @@
+{% extends "base.html" %}{% from "_ui.html" import status, priority, bar_list %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+<div class="head">
+  <div><h1>Dashboard</h1><div class="muted">All electronics, computers and network equipment across campus</div></div>
+  {% if can('admin', 'technician') %}<a class="btn" href="{{ url_for('asset_new') }}">+ Add asset</a>{% endif %}
+</div>
+
+<div class="kpis">
+  <a class="kpi" href="{{ url_for('assets') }}"><div class="label">Total assets</div><div class="value">{{ stats.total }}</div><div class="sub">excl. scrapped, incl. parts</div></a>
+  <a class="kpi" href="{{ url_for('assets', status='Working') }}"><div class="label">Working</div><div class="value">{{ stats.working }}</div>
+    <div class="sub">{{ (stats.working * 100 / stats.total)|round|int if stats.total else 0 }}% of fleet</div></a>
+  <a class="kpi {{ 'alert' if stats.down }}" href="{{ url_for('assets', status='Faulty') }}"><div class="label">Faulty / under service</div><div class="value">{{ stats.down }}</div><div class="sub">need attention</div></a>
+  <a class="kpi {{ 'alert' if stats.open_issues }}" href="{{ url_for('issues') }}"><div class="label">Open issues</div><div class="value">{{ stats.open_issues }}</div><div class="sub">reported, not fixed</div></a>
+  <a class="kpi {{ 'caution' if stats.service_due }}" href="{{ url_for('services') }}"><div class="label">Service due</div><div class="value">{{ stats.service_due }}</div><div class="sub">overdue or next 30 days</div></a>
+  <div class="kpi {{ 'caution' if stats.warranty }}"><div class="label">Warranty expiring</div><div class="value">{{ stats.warranty }}</div><div class="sub">next 60 days</div></div>
+  <a class="kpi {{ 'caution' if stats.audit_due }}" href="{{ url_for('register') }}"><div class="label">Stock check due</div><div class="value">{{ stats.audit_due }}</div><div class="sub">not verified in 12 months</div></a>
+  <a class="kpi {{ 'alert' if stats.loans_overdue }}" href="{{ url_for('loans') }}"><div class="label">Lent out</div><div class="value">{{ stats.loans }}</div><div class="sub">{{ stats.loans_overdue }} overdue</div></a>
+  <a class="kpi" href="{{ url_for('register') }}"><div class="label">Book value</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(stats.book) }}</div><div class="sub">of ₹{{ '{:,.0f}'.format(stats.value) }} purchase cost</div></a>
+</div>
+
+{% set colors = {'Working': 'var(--good)', 'Faulty': 'var(--bad)', 'Under service': '#e8a317', 'In store': '#8a93a6', 'Scrapped': '#3b4252'} %}
+{% set all = by_status.values()|sum %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Asset health</h2>
+  {% if all %}
+  <div class="statusbar">
+    {% for s in STATUSES if by_status.get(s) %}<div title="{{ s }}: {{ by_status[s] }}" style="flex: {{ by_status[s] }}; background: {{ colors[s] }}"></div>{% endfor %}
+  </div>
+  <div class="legend">{% for s in STATUSES if by_status.get(s) %}<span style="--c: {{ colors[s] }}">{{ s }} · <b>{{ by_status[s] }}</b></span>{% endfor %}</div>
+  {% else %}<p class="muted">No assets yet.</p>{% endif %}
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card"><h2>Equipment by category</h2>{{ bar_list(by_cat) }}</div>
+  <div class="card"><h2>Equipment by building</h2>{{ bar_list(by_building) }}</div>
+</div>
+
+<div class="grid g3">
+  <div class="card flush">
+    <h2>Open issues <a href="{{ url_for('issues') }}" style="font-weight:500;font-size:13px;margin-left:6px">view all</a></h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Issue</th><th>Asset</th><th>Room</th><th>Priority</th></tr></thead>
+      <tbody>
+      {% for i in open_issues %}
+        <tr><td>{{ i.title }}<div class="muted" style="font-size:12px">{{ i.type }} · {{ i.reported_at[:10] }}</div></td>
+            <td><a href="{{ url_for('asset', aid=i.asset_id) }}" class="mono">{{ i.tag }}</a><div style="font-size:12px">{{ i.asset_name }}</div></td>
+            <td>{{ i.room }}</td><td>{{ priority(i.priority) }}</td></tr>
+      {% else %}<tr><td colspan="4" class="empty">No open issues 🎉</td></tr>{% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h2>Recent activity</h2>
+    <ul class="timeline">
+      {% for r in recent %}
+      <li>{% if r.tag %}<a href="{{ url_for('asset', aid=r.asset_id) }}" class="mono">{{ r.tag }}</a> {% endif %}{{ r.text }}
+        <div class="when">{{ r.at }}{% if r.who %} · {{ r.who }}{% endif %}</div></li>
+      {% else %}<li class="muted">Nothing yet.</li>{% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,17 @@
+{% macro status(s) -%}
+<span class="chip {{ {'Working':'good','Faulty':'bad','Under service':'warn'}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro priority(p) -%}
+<span class="chip plain {{ {'High':'bad','Medium':'warn'}.get(p, '') }}">{{ p }}</span>
+{%- endmacro %}
+
+{% macro bar_list(rows) -%}
+{% for r in rows %}
+<div class="bar-row" title="{{ r.label }}: {{ r.n }}">
+  <span class="name">{{ r.label }}</span>
+  <div class="bar-track"><div class="bar-fill" style="width: {{ r.pct }}%"></div></div>
+  <span class="n">{{ r.n }}</span>
+</div>
+{% else %}<p class="muted">No data yet.</p>{% endfor %}
+{%- endmacro %}

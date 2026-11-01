@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Account{% endblock %}
+{% block body %}
+<div class="head"><h1>My account</h1></div>
+<div class="card" style="max-width:420px">
+  <p><b>{{ user.name }}</b> · {{ user.username }} · {{ user.role|capitalize }}</p>
+  <form method="post" class="stack">{{ csrf }}
+    <label>Current password <input name="current" type="password" autocomplete="current-password" required></label>
+    <label>New password (8+ characters) <input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
+    <button class="btn">Change password</button>
+  </form>
+</div>
+{% endblock %}

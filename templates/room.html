@@ -1,0 +1,73 @@
+{% extends "base.html" %}{% from "_ui.html" import status %}
+{% block title %}{{ room.name }}{% endblock %}
+{% macro verified(a) -%}
+  {% if a.last_audit %}<span class="{{ 'chip plain warn' if a.last_audit < audit_cutoff }}">{{ a.last_audit }}</span>{% else %}<span class="muted">never</span>{% endif %}
+{%- endmacro %}
+{% macro tick(a) -%}
+  {% if audit %}<td>{% if a.status != 'Scrapped' %}<input type="checkbox" name="found" value="{{ a.id }}" form="audit" aria-label="Found {{ a.tag }}" class="found">{% endif %}</td>{% endif %}
+{%- endmacro %}
+{% block body %}
+<div class="head">
+  <div>
+    <div class="crumbs"><a href="{{ url_for('locations') }}">Buildings</a> / {{ room.building }}</div>
+    <h1>{{ room.name }}</h1>
+    <div class="muted">{{ room.type }}{% if room.floor %} · Floor {{ room.floor }}{% endif %} · {{ total }} item{{ 's' if total != 1 }}</div>
+  </div>
+  <div class="actions">
+    {% if can('admin', 'technician') and not audit %}<a class="btn ghost" href="{{ url_for('room', rid=room.id, audit=1) }}">Verify stock</a>{% endif %}
+    <a class="btn ghost" href="{{ url_for('register', room=room.id) }}">Stock register</a>
+    <a class="btn ghost" href="{{ url_for('labels', room=room.id) }}">QR labels</a>
+    {% if can('admin', 'technician') %}<a class="btn" href="{{ url_for('asset_new', room=room.id) }}">+ Add asset here</a>{% endif %}
+  </div>
+</div>
+
+{% if audit %}
+<form id="audit" method="post" action="{{ url_for('room_audit', rid=room.id) }}" class="card" style="margin-bottom:14px;border-left:4px solid var(--gold)">{{ csrf }}
+  <h2>Stock verification</h2>
+  <p class="muted" style="margin-top:0">Walk the room and tick every item you can physically see (scan its QR label to find it). Unticked items are logged as <b>not found</b>.</p>
+  <div class="actions">
+    <button class="btn">Save stock check</button>
+    <button type="button" class="btn ghost" onclick="document.querySelectorAll('.found').forEach(c => c.checked = true)">Tick all</button>
+    <a class="btn ghost" href="{{ url_for('room', rid=room.id) }}">Cancel</a>
+  </div>
+</form>
+{% endif %}
+
+{% for cat, items in groups.items() %}
+<div class="card flush" style="margin-bottom:14px">
+  <h2>{{ cat }} <span class="muted">({{ items|length }})</span></h2>
+  <div class="table-wrap"><table>
+    <thead><tr>{% if audit %}<th>Found</th>{% endif %}<th>Tag</th><th>Name</th><th>Make / model</th><th>Serial / IP</th><th>Status</th><th>Verified</th><th>Issues</th></tr></thead>
+    <tbody>
+    {% for a in items %}
+      <tr>
+        {{ tick(a) }}
+        <td><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a></td>
+        <td><b>{{ a.name }}</b>{% if a.part_count %} <span class="muted">· {{ a.part_count }} parts</span>{% endif %}
+          {% if a.assigned_to %}<div style="font-size:12px"><span class="chip plain warn">Lent to {{ a.assigned_to }}</span></div>{% endif %}</td>
+        <td>{{ a.brand or '' }} {{ a.model or '' }}</td>
+        <td class="mono">{{ a.serial_no or '' }}{% if a.ip_address %}<div>{{ a.ip_address }}</div>{% endif %}</td>
+        <td>{{ status(a.status) }}</td>
+        <td>{{ verified(a) }}</td>
+        <td>{% if a.open_issues %}<span class="badge">{{ a.open_issues }}</span>{% endif %}</td>
+      </tr>
+      {% for p in parts.get(a.id, []) %}
+      <tr class="part">
+        {{ tick(p) }}
+        <td><a class="mono" href="{{ url_for('asset', aid=p.id) }}">{{ p.tag }}</a></td>
+        <td>↳ {{ p.name }} <span class="muted">· {{ p.cat }}</span></td>
+        <td>{{ p.brand or '' }} {{ p.model or '' }}</td>
+        <td class="mono">{{ p.serial_no or '' }}</td>
+        <td>{{ status(p.status) }}</td>
+        <td>{{ verified(p) }}</td>
+        <td>{% if p.open_issues %}<span class="badge">{{ p.open_issues }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card empty">Nothing recorded in this room yet.</div>
+{% endfor %}
+{% endblock %}

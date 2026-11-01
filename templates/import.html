@@ -1,0 +1,36 @@
+{% extends "base.html" %}{% block title %}Import assets{% endblock %}
+{% block body %}
+<div class="head">
+  <div><div class="crumbs"><a href="{{ url_for('assets') }}">Assets</a></div><h1>Import assets from CSV</h1>
+    <div class="muted">Load a whole lab or department at once from Excel.</div></div>
+  <a class="btn ghost" href="{{ url_for('asset_import', template=1) }}">Download template</a>
+</div>
+
+{% if errors %}
+<div class="flash error">Nothing was imported. Fix these and upload again:
+  <ul style="margin:6px 0 0">{% for e in errors[:30] %}<li>{{ e }}</li>{% endfor %}</ul>
+  {% if errors|length > 30 %}…and {{ errors|length - 30 }} more.{% endif %}
+</div>
+{% endif %}
+
+<div class="grid g2">
+  <form method="post" enctype="multipart/form-data" class="card stack">{{ csrf }}
+    <h2>Upload</h2>
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <div><button class="btn">Import</button></div>
+    <p class="muted" style="margin:0;font-size:13px">All rows are checked first. If any row has a problem, nothing is saved.</p>
+  </form>
+  <div class="card">
+    <h2>How it works</h2>
+    <ul style="margin:0;padding-left:18px;color:var(--ink-2)">
+      <li><b>Required:</b> name, building, room</li>
+      <li>New buildings, rooms and categories are created automatically</li>
+      <li>Leave <span class="mono">tag</span> blank to auto-number (AMS-00001…)</li>
+      <li><b>Parts:</b> set <span class="mono">parent_tag</span> to the computer's tag; list the computer first</li>
+      <li>Status: {{ STATUSES|join(', ') }} (blank = Working)</li>
+      <li>Dates as YYYY-MM-DD. Excel: Save As → <b>CSV UTF-8</b></li>
+    </ul>
+    <p class="mono muted" style="font-size:12px;word-break:break-word;margin-bottom:0">{{ cols|join(', ') }}</p>
+  </div>
+</div>
+{% endblock %}

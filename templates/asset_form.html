@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit ' ~ a.tag if a else 'Add asset' }}{% endblock %}
+{% block body %}
+{% set f = request.form if request.method == 'POST' else (a or preset) %}
+<div class="head">
+  <div>
+    <div class="crumbs"><a href="{{ url_for('assets') }}">Assets</a>{% if a %} / <a href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a>{% endif %}</div>
+    <h1>{{ 'Edit ' ~ a.name if a else ('Duplicate ' ~ copy.name if copy else ('Add part to ' ~ parent.name if parent else 'Add asset')) }}</h1>
+    {% if copy %}<div class="muted">Details copied from <a href="{{ url_for('asset', aid=copy.id) }}">{{ copy.tag }}</a>. Fill in the serial number and IP for this unit.</div>{% endif %}
+    {% if parent %}<div class="muted">Part of <a href="{{ url_for('asset', aid=parent.id) }}">{{ parent.tag }} · {{ parent.name }}</a>, stays in the same room.</div>{% endif %}
+  </div>
+</div>
+<form method="post" class="card">{{ csrf }}
+  {% if parent and not a %}<input type="hidden" name="parent" value="{{ parent.id }}">{% endif %}
+  <div class="form-grid">
+    <label>Name * <input name="name" required value="{{ f.name or '' }}" placeholder="e.g. L1-PC-07, Core Switch"></label>
+    <label>Asset tag <input name="tag" value="{{ f.tag or '' }}" placeholder="Leave blank to auto-generate"></label>
+    <label>Category <select name="category_id"><option value="">—</option>
+      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if f.category_id|string == c.id|string }}>{{ c.name }}</option>{% endfor %}</select></label>
+    {% if not parent %}
+    <label>Room * <select name="room_id" required><option value="">Choose room…</option>
+      {% for b in buildings %}<optgroup label="{{ b.name }}">
+        {% for r in rooms if r.building_id == b.id %}<option value="{{ r.id }}" {{ 'selected' if f.room_id|string == r.id|string }}>{{ r.name }}</option>{% endfor %}
+      </optgroup>{% endfor %}</select></label>
+    {% endif %}
+    <label>Status <select name="status">{% for s in STATUSES %}<option {{ 'selected' if f.status == s }}>{{ s }}</option>{% endfor %}</select></label>
+    <label>Brand <input name="brand" value="{{ f.brand or '' }}"></label>
+    <label>Model <input name="model" value="{{ f.model or '' }}"></label>
+    <label>Serial number <input name="serial_no" value="{{ f.serial_no or '' }}"></label>
+    <label>IP address <input name="ip_address" value="{{ f.ip_address or '' }}" placeholder="for networked devices"></label>
+    <label>MAC address <input name="mac_address" value="{{ f.mac_address or '' }}"></label>
+    <label>Vendor / supplier <input name="vendor" value="{{ f.vendor or '' }}"></label>
+    <label>Purchase date <input type="date" name="purchase_date" value="{{ f.purchase_date or '' }}"></label>
+    <label>Warranty until <input type="date" name="warranty_until" value="{{ f.warranty_until or '' }}"></label>
+    <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost" value="{{ f.cost if f.cost is not none else '' }}"></label>
+    <label class="full">Notes <textarea name="notes">{{ f.notes or '' }}</textarea></label>
+    {% if copy and preset.copy_parts and not parent %}
+    <label class="check full"><input type="checkbox" name="copy_parts_from" value="{{ copy.id }}" checked>
+      Also add its {{ preset.copy_parts }} part{{ 's' if preset.copy_parts != 1 }} (RAM, disk, monitor…)</label>
+    {% endif %}
+  </div>
+  <div class="actions" style="margin-top:16px">
+    <button class="btn">{{ 'Save changes' if a else 'Add asset' }}</button>
+    <a class="btn ghost" href="{{ url_for('asset', aid=a.id) if a else url_for('assets') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

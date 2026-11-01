@@ -1,0 +1,28 @@
+{% extends "auth.html" %}{% block title %}Sign in{% endblock %}
+{% block body %}
+<h1>Asset Management System</h1>
+<p class="muted">Sign in to manage campus assets.</p>
+<form method="post" class="stack">{{ csrf }}
+  <label>Username <input name="username" autocomplete="username" required autofocus></label>
+  <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="btn">Sign in</button>
+</form>
+{% if demo %}
+<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+  <p class="muted" style="margin:0 0 8px;font-size:13px">Demo mode: sign in as</p>
+  <div class="actions">
+    {% for u, n, r in demo %}
+    <button type="button" class="btn ghost sm" onclick="demoLogin('{{ u }}')">{{ r|capitalize }}</button>
+    {% endfor %}
+  </div>
+</div>
+<script>
+function demoLogin(u) {
+  const f = document.querySelector('form');
+  f.username.value = u;
+  f.password.value = 'demo-' + u + '-2026';
+  f.submit();
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{% extends "base.html" %}{% from "_ui.html" import status %}
+{% block title %}Lent out{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Lent out</h1><div class="muted">Projectors, laptops and equipment issued to staff. Lend or return from the asset's page.</div></div></div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Asset</th><th>Lent to</th><th>Due back</th><th>Home room</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for a in rows %}
+    <tr>
+      <td><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }}<div class="muted" style="font-size:12px">{{ a.cat or '' }}</div></td>
+      <td><b>{{ a.assigned_to }}</b></td>
+      <td>{{ a.assigned_due or '—' }} {% if a.assigned_due and a.assigned_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</td>
+      <td>{{ a.building }} · {{ a.room }}</td>
+      <td>{{ status(a.status) }}</td>
+    </tr>
+  {% else %}<tr><td colspan="5" class="empty">Nothing is lent out.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}
