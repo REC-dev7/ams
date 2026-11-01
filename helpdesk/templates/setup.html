@@ -1,0 +1,11 @@
+{% extends "auth.html" %}{% block title %}First-time setup{% endblock %}
+{% block body %}
+<h1>Welcome</h1>
+<p class="muted">Create the first admin account.</p>
+<form method="post" class="stack">{{ csrf }}
+  <label>Full name <input name="name" required autofocus></label>
+  <label>Username <input name="username" autocomplete="username" required></label>
+  <label>Password (8+ characters) <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+  <button class="btn">Create admin</button>
+</form>
+{% endblock %}

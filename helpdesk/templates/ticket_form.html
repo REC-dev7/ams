@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Raise a ticket{% endblock %}
+{% block body %}
+<div class="head">
+  <div><div class="crumbs"><a href="{{ url_for('tickets') }}">Tickets</a></div><h1>Raise a ticket</h1>
+    <div class="muted">Tell us what's wrong. A technician will be assigned and you can follow progress here.</div></div>
+</div>
+<form method="post" class="card" style="max-width:760px">{{ csrf }}
+  <div class="form-grid">
+    <label class="full">What's the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. System not working, network weak, software not opening"></label>
+    <label>Type <select name="category">{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select></label>
+    <label>How urgent? <select name="priority">
+      {% for p, hint in [('Low', 'can wait a week'), ('Medium', 'fix in 3 days'), ('High', 'fix in 1 day'), ('Critical', 'class or exam blocked, fix in 4 h')] %}
+      <option value="{{ p }}" {{ 'selected' if (preset.priority or 'Medium') == p }}>{{ p }} · {{ hint }}</option>{% endfor %}</select></label>
+    <label>Where? <input name="location" value="{{ preset.location or '' }}" placeholder="e.g. CSE Block, Computer Lab 2"></label>
+    <label>Asset tag (if known)
+      <input name="asset_tag" list="assets" value="{{ preset.asset_tag or '' }}" placeholder="{{ 'Type a tag or name, or scan the QR label' if assets else 'e.g. AMS-00013' }}" autocomplete="off">
+      {% if assets %}<datalist id="assets">{% for a in assets %}<option value="{{ a.tag }}">{{ a.name }} · {{ a.building }} {{ a.room }}</option>{% endfor %}</datalist>{% endif %}</label>
+    <label class="full">Details <textarea name="description" placeholder="What happened? Any error message? Since when?">{{ preset.description or '' }}</textarea></label>
+  </div>
+  <div class="actions" style="margin-top:16px">
+    <button class="btn">Submit ticket</button>
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

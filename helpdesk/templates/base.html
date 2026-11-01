@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>{% block title %}{% endblock %} · REC Helpdesk</title>
+<link rel="icon" href="{{ url_for('static', filename='rec-icon.png') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+{% macro icon(d) %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{{ d|safe }}</svg>{% endmacro %}
+{% set ep = request.endpoint %}
+<div class="app">
+  <a class="skip" href="#main">Skip to content</a>
+  <aside class="side">
+    <div class="brand"><div class="logo"><img src="{{ url_for('static', filename='rec-icon.png') }}" alt="REC" width="32" height="32"></div><div>REC <span class="gold">Helpdesk</span><small>Rajalakshmi Engineering College</small></div></div>
+    <nav class="nav">
+      <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}" {{ 'aria-current=page' if ep == 'dashboard' }}>{{ icon('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>') }}Dashboard</a>
+      <a href="{{ url_for('ticket_new') }}" class="{{ 'on' if ep == 'ticket_new' }}" {{ 'aria-current=page' if ep == 'ticket_new' }}>{{ icon('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>') }}Raise a ticket</a>
+      <a href="{{ url_for('tickets') }}" class="{{ 'on' if ep in ('tickets', 'ticket') }}" {{ 'aria-current=page' if ep in ('tickets', 'ticket') }}>{{ icon('<path d="M3 9a2 2 0 0 0 0 6v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1v-3a2 2 0 0 1 0-6V6a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1z"/><path d="M13 5v14" stroke-dasharray="2 3"/>') }}All tickets</a>
+      <a href="{{ url_for('tickets', mine=1) }}" class="{{ 'on' if ep == 'tickets' and request.args.get('mine') }}">{{ icon('<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>') }}{{ 'My tickets' if user.role == 'staff' else 'Assigned to me' }}</a>
+      {% if can('admin') %}
+      <div class="sep">Admin</div>
+      <a href="{{ url_for('users') }}" class="{{ 'on' if ep == 'users' }}" {{ 'aria-current=page' if ep == 'users' }}>{{ icon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>') }}Users</a>
+      {% endif %}
+    </nav>
+    <div class="me">
+      <b>{{ user.name }}</b><span>{{ user.role|capitalize }}</span>
+      <div class="row">
+        <a href="{{ url_for('account') }}">Account</a>
+        <form method="post" action="{{ url_for('logout') }}">{{ csrf }}<button>Sign out</button></form>
+      </div>
+    </div>
+  </aside>
+  <main class="main" id="main">
+    {% for cat, msg in get_flashed_messages(with_categories=true) %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+    {% block body %}{% endblock %}
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{% macro status(s) -%}
+<span class="chip {{ {'Open':'bad','In progress':'warn','Resolved':'good','Closed':''}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro priority(p) -%}
+<span class="chip plain {{ {'Critical':'bad','High':'bad','Medium':'warn'}.get(p, '') }}">{{ p }}</span>
+{%- endmacro %}
+
+{% macro due(t) -%}
+{% set d = due_text(t) %}{% if d %}<span class="{{ 'chip plain bad' if overdue(t) else 'muted' }}" style="font-size:12px">{{ d }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro bar_list(rows) -%}
+{% for r in rows %}
+<div class="bar-row" title="{{ r.label }}: {{ r.n }}">
+  <span class="name">{{ r.label }}</span>
+  <div class="bar-track"><div class="bar-fill" style="width: {{ r.pct }}%"></div></div>
+  <span class="n">{{ r.n }}</span>
+</div>
+{% else %}<p class="muted">No open tickets.</p>{% endfor %}
+{%- endmacro %}

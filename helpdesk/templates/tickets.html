@@ -1,0 +1,39 @@
+{% extends "base.html" %}{% from "_ui.html" import status, priority, due %}
+{% block title %}Tickets{% endblock %}
+{% block body %}
+{% set a = request.args %}
+<div class="head">
+  <div><h1>Tickets</h1><div class="muted">{{ rows|length }} shown</div></div>
+  <a class="btn" href="{{ url_for('ticket_new') }}">+ Raise a ticket</a>
+</div>
+
+<form class="filters">
+  <input type="search" name="q" value="{{ a.q }}" aria-label="Search tickets" placeholder="Search problem, place, asset tag…">
+  <select name="scope" aria-label="Show">
+    {% for v, l in [('open', 'Open'), ('closed', 'Fixed'), ('all', 'All')] %}<option value="{{ v }}" {{ 'selected' if scope == v }}>{{ l }}</option>{% endfor %}</select>
+  <select name="category" aria-label="Category"><option value="">All categories</option>{% for c in CATEGORIES %}<option {{ 'selected' if a.category == c }}>{{ c }}</option>{% endfor %}</select>
+  <select name="priority" aria-label="Priority"><option value="">All priorities</option>{% for p in PRIORITIES %}<option {{ 'selected' if a.priority == p }}>{{ p }}</option>{% endfor %}</select>
+  <label class="check"><input type="checkbox" name="mine" value="1" {{ 'checked' if a.mine }}> Mine</label>
+  <label class="check"><input type="checkbox" name="unassigned" value="1" {{ 'checked' if a.unassigned }}> Unassigned</label>
+  <label class="check"><input type="checkbox" name="overdue" value="1" {{ 'checked' if a.overdue }}> Overdue</label>
+  <button class="btn">Filter</button>
+  {% if a %}<a class="btn ghost" href="{{ url_for('tickets') }}">Clear</a>{% endif %}
+</form>
+
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>No.</th><th>Priority</th><th>Problem</th><th>Where</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
+  <tbody>
+  {% for t in rows %}
+    <tr>
+      <td><a class="mono" href="{{ url_for('ticket', tid=t.id) }}">HD-{{ '%04d'|format(t.id) }}</a></td>
+      <td>{{ priority(t.priority) }}</td>
+      <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a><div class="muted" style="font-size:12px">{{ t.category }} · by {{ t.raiser or '—' }}</div></td>
+      <td>{{ t.location or '—' }}{% if t.asset_tag %}<div class="mono muted" style="font-size:12px">{{ t.asset_tag }}</div>{% endif %}</td>
+      <td>{{ status(t.status) }}</td>
+      <td>{{ t.assignee or '—' }}</td>
+      <td>{{ due(t) }}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">No tickets match.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}{% from "_ui.html" import status, priority, due %}
+{% block title %}HD-{{ '%04d'|format(t.id) }} {{ t.title }}{% endblock %}
+{% block body %}
+{% set is_staff_side = can('admin', 'technician') %}
+{% set mine_ticket = t.raised_by == user.id %}
+<div class="head">
+  <div>
+    <div class="crumbs"><a href="{{ url_for('tickets') }}">Tickets</a> / <span class="mono">HD-{{ '%04d'|format(t.id) }}</span></div>
+    <h1>{{ t.title }} {{ status(t.status) }}</h1>
+    <div class="muted">{{ t.category }} · raised by {{ t.raiser or '—' }} on {{ t.created_at[:16] }}</div>
+  </div>
+  <div class="actions">
+    {% if t.status == 'Resolved' and (mine_ticket or is_staff_side) %}
+    <form method="post" action="{{ url_for('ticket_close', tid=t.id) }}">{{ csrf }}<button class="btn">Confirm fixed</button></form>
+    {% endif %}
+    {% if t.status in ('Resolved', 'Closed') and (mine_ticket or is_staff_side) %}
+    <form method="post" action="{{ url_for('ticket_reopen', tid=t.id) }}">{{ csrf }}<button class="btn ghost">Not fixed, reopen</button></form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+  <div class="facts">
+    <div><span>Priority</span><b>{{ priority(t.priority) }}</b></div>
+    <div><span>Technician</span><b>{{ t.assignee or 'Not assigned yet' }}</b></div>
+    <div><span>Fix by</span><b>{{ t.due_at[:16] }}</b>{% if t.status in ('Open', 'In progress') %} {{ due(t) }}{% endif %}</div>
+    <div><span>Where</span><b>{{ t.location or '—' }}</b></div>
+    {% if t.resolved_at %}<div><span>Fixed on</span><b>{{ t.resolved_at[:16] }}</b></div>{% endif %}
+  </div>
+  {% if t.description %}<p style="margin:14px 0 0;white-space:pre-line">{{ t.description }}</p>{% endif %}
+  {% if t.resolution %}<p style="margin:14px 0 0"><b>Fix:</b> {{ t.resolution }}</p>{% endif %}
+</div>
+
+{% if t.asset_tag %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Equipment</h2>
+  {% if asset %}
+  <div class="facts">
+    <div><span>Asset</span><b><span class="mono">{{ asset.tag }}</span> {{ asset.name }}</b></div>
+    <div><span>Location in AMS</span><b>{{ asset.building }} · {{ asset.room }}</b></div>
+    <div><span>AMS status</span><b>{{ asset.status }}</b></div>
+  </div>
+  {% else %}
+  <p style="margin:0"><span class="mono">{{ t.asset_tag }}</span> <span class="muted">{{ 'not found in the AMS' if ams_linked else '(AMS not connected)' }}</span></p>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if is_staff_side and t.status in ('Open', 'In progress') %}
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <h2>Assign</h2>
+    <form method="post" action="{{ url_for('ticket_assign', tid=t.id) }}" class="actions">{{ csrf }}
+      <select name="assigned_to" aria-label="Technician" style="width:auto;min-width:160px">
+        {% for x in techs %}<option value="{{ x.id }}" {{ 'selected' if x.id == t.assigned_to }}>{{ x.name }}</option>{% endfor %}</select>
+      <button class="btn ghost">Assign</button>
+      {% if t.assigned_to != user.id %}<button class="btn" name="take" value="1">Take it myself</button>{% endif %}
+    </form>
+    <form method="post" action="{{ url_for('ticket_priority', tid=t.id) }}" class="actions" style="margin-top:12px">{{ csrf }}
+      <select name="priority" aria-label="Priority" style="width:auto">{% for p in PRIORITIES %}<option {{ 'selected' if p == t.priority }}>{{ p }}</option>{% endfor %}</select>
+      <button class="btn sm ghost">Change priority</button>
+      <span class="muted" style="font-size:12px">resets the fix-by time</span>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Resolve</h2>
+    <form method="post" action="{{ url_for('ticket_resolve', tid=t.id) }}" class="stack">{{ csrf }}
+      <textarea name="resolution" required aria-label="What was done" placeholder="What was done to fix it? e.g. replaced power cable, reinstalled driver"></textarea>
+      <div><button class="btn">Mark resolved</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Updates</h2>
+  <ul class="timeline">
+    {% for c in comments %}
+    <li>{% if c.system %}<span class="muted">{{ c.body }}</span>{% else %}<b>{{ c.who or 'Someone' }}:</b> {{ c.body }}{% endif %}
+      <div class="when">{{ c.at[:16] }}{% if c.system and c.who %} · {{ c.who }}{% endif %}</div></li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="{{ url_for('ticket_comment', tid=t.id) }}" class="actions" id="end" style="margin-top:12px;flex-wrap:nowrap">{{ csrf }}
+    <input name="body" required aria-label="Add an update" placeholder="Add a comment or update…" style="flex:1">
+    <button class="btn">Post</button>
+  </form>
+</div>
+{% endblock %}
