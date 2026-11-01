@@ -25,9 +25,11 @@ def test_flow():
     c = m.app.test_client()
 
     assert c.get("/").location.endswith("/setup")
+    assert m.app.config["SESSION_COOKIE_NAME"] == "ams_session"
     post(c, "/setup", {"name": "Admin", "username": "admin", "password": "adminpass1"}, "/setup")
     assert c.get("/").location.startswith("/login")
-    assert c.post("/login", data={"username": "admin", "password": "adminpass1"}).status_code == 400  # no csrf
+    r = c.post("/login", data={"username": "admin", "password": "adminpass1"})  # no csrf
+    assert r.status_code == 400 and b"form expired" in r.data.lower() and b"REC" in r.data
     assert login(c, "admin", "wrongpass").status_code == 200
     assert login(c, "admin", "adminpass1").status_code == 302
 

@@ -50,7 +50,8 @@ if not os.path.exists(KEY_FILE):
         fh.write(secrets.token_hex(32))
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
-app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=1024 * 1024)
+# own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
+app.config.update(SESSION_COOKIE_NAME="helpdesk_session", SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True, MAX_CONTENT_LENGTH=1024 * 1024)
 
 
 def now():
@@ -121,7 +122,8 @@ PUBLIC = {"login", "setup", "static"}
 def guard():
     if request.endpoint is None:
         return
-    if request.method == "POST" and request.form.get("csrf") != session.get("csrf"):
+    token = session.get("csrf")
+    if request.method == "POST" and (not token or not secrets.compare_digest(request.form.get("csrf", ""), token)):
         abort(400, "Form expired, go back and try again.")
     if request.endpoint != "static" and not q("SELECT 1 FROM users LIMIT 1", one=True):
         return None if request.endpoint == "setup" else redirect(url_for("setup"))
@@ -479,6 +481,12 @@ def user_delete(uid):
         db().commit()
         flash("User deleted.", "ok")
     return redirect(url_for("users"))
+
+
+@app.errorhandler(400)
+def bad_request(e):
+    msg = "That form expired. Go back, refresh the page and try again." if "expired" in str(e.description) else "Bad request."
+    return render_template("error.html", msg=msg), 400
 
 
 @app.errorhandler(403)
