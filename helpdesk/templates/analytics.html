@@ -1,0 +1,56 @@
+{% extends "base.html" %}{% from "_ui.html" import bar_list %}
+{% block title %}Analytics{% endblock %}
+{% block body %}
+<div class="head">
+  <div><h1>Analytics</h1>
+    <div class="muted">How the service is doing{% if user.role in ('hod', 'coordinator') %} for {{ user.department }}{% endif %}. Work logged after the fact is left out of the response and fix times.</div></div>
+  <form class="filters" style="margin:0"><select name="days" aria-label="Period" onchange="this.form.submit()">
+    {% for v, l in (('30', 'Last 30 days'), ('90', 'Last 90 days'), ('365', 'Last year'), ('', 'All time')) %}<option value="{{ v }}" {{ 'selected' if (days|string if days else '') == v }}>{{ l }}</option>{% endfor %}
+  </select><noscript><button class="btn sm">Show</button></noscript></form>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Tickets raised</div><div class="value">{{ stats.total }}</div><div class="sub">{{ stats.live }} still open</div></div>
+  <div class="kpi {{ 'alert' if stats.overdue }}"><div class="label">Overdue now</div><div class="value">{{ stats.overdue }}</div><div class="sub">past their fix-by time</div></div>
+  <div class="kpi {{ 'caution' if stats.sla is not none and stats.sla < 80 }}"><div class="label">Fixed on time</div><div class="value">{{ stats.sla ~ '%' if stats.sla is not none else '—' }}</div><div class="sub">of {{ stats.sla_n }} with a fix-by time</div></div>
+  <div class="kpi"><div class="label">First reply (median)</div><div class="value">{{ stats.first ~ ' h' if stats.first is not none else '—' }}</div><div class="sub">from raised to IT's first answer</div></div>
+  <div class="kpi"><div class="label">Time to fix (median)</div><div class="value">{{ stats.fix ~ ' h' if stats.fix is not none else '—' }}</div><div class="sub">{{ stats.fixed }} fixed</div></div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card"><h2>Raised and fixed by month</h2>
+    {% for m in by_month %}
+    <div class="bar-row" style="grid-template-columns:70px 1fr 70px" title="{{ m.label }}: {{ m.raised }} raised, {{ m.closed }} fixed">
+      <span class="name">{{ m.label }}</span>
+      <div><div class="bar-track" style="margin-bottom:3px"><div class="bar-fill" style="width:{{ m.r }}%"></div></div>
+        <div class="bar-track"><div class="bar-fill" style="width:{{ m.c }}%;background:var(--good)"></div></div></div>
+      <span class="n" style="font-size:12px">{{ m.raised }} / {{ m.closed }}</span>
+    </div>
+    {% else %}<p class="muted">No tickets in this period.</p>{% endfor %}
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Teal: raised. Green: fixed. Numbers show raised / fixed.</p></div>
+  <div class="card"><h2>By priority</h2>{{ bar_list(by_prio) }}</div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card"><h2>By kind of problem</h2>{{ bar_list(by_category) }}</div>
+  <div class="card"><h2>By team</h2>{{ bar_list(by_team) }}<h2 style="margin-top:18px">By department</h2>{{ bar_list(by_dept) }}</div>
+</div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card flush"><h2>Places with repeat problems</h2>
+    <div class="table-wrap"><table><thead><tr><th>Place</th><th class="num">Tickets</th></tr></thead>
+      <tbody>{% for k, n in places %}<tr><td><a href="{{ url_for('tickets', q=k) }}">{{ k }}</a></td><td class="num">{{ n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="empty">No place has more than one ticket.</td></tr>{% endfor %}</tbody></table></div></div>
+  <div class="card flush"><h2>Equipment with repeat problems</h2>
+    <div class="table-wrap"><table><thead><tr><th>Asset tag</th><th class="num">Tickets</th></tr></thead>
+      <tbody>{% for k, n in assets %}<tr><td><a class="mono" href="{{ url_for('tickets', q=k) }}">{{ k }}</a></td><td class="num">{{ n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="empty">No asset has more than one ticket. A repeat means it may need replacing.</td></tr>{% endfor %}</tbody></table></div></div>
+</div>
+
+{% if can('admin', 'auditor') %}
+<div class="card flush"><h2>By technician</h2>
+  <div class="table-wrap"><table><thead><tr><th>Technician</th><th class="num">Assigned</th><th class="num">Fixed</th><th class="num">Average hours to fix</th></tr></thead>
+    <tbody>{% for t in techs %}<tr><td>{{ t.name }}</td><td class="num">{{ t.assigned }}</td><td class="num">{{ t.fixed }}</td><td class="num">{{ t.avg if t.avg is not none else '—' }}</td></tr>
+    {% else %}<tr><td colspan="4" class="empty">Nothing assigned yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endif %}
+{% endblock %}

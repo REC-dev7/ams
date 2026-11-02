@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Notifications{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Notifications</h1>
+  <div class="muted">Messages go out when a ticket is raised, assigned or resolved. Each channel is off until the server has its settings.</div></div>
+  <form method="post" action="{{ url_for('notifications') }}">{{ csrf }}<button class="btn">Send a test</button></form></div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card"><h2>Channels</h2>
+    <table><tbody>
+      <tr><td><b>Google Chat space</b></td><td>{{ 'On' if chat_on else 'Off' }}</td><td class="muted">New tickets, critical ones flagged. Needs <span class="mono">HD_CHAT_WEBHOOK</span></td></tr>
+      <tr><td><b>Email</b></td><td>{{ 'On' if mail_on else 'Off' }}</td><td class="muted">New ticket to the team, assigned to the technician, resolved to the requester. Needs <span class="mono">HD_SMTP_HOST</span> and <span class="mono">HD_SMTP_FROM</span></td></tr>
+      <tr><td><b>Update the AMS</b></td><td>{{ 'On' if writeback else 'Off' }}</td><td class="muted">Marks the asset faulty when a fault ticket names it, and working when the last open one is fixed. Needs <span class="mono">HD_AMS_WRITEBACK=1</span> here and <span class="mono">AMS_API_WRITE=1</span> on the AMS</td></tr>
+    </tbody></table>
+    {% if without_email %}<p class="muted" style="margin:10px 0 0">{{ without_email }} user(s) have no email yet, so they get nothing by email. Add it on the <a href="{{ url_for('users') }}">Users</a> page.</p>{% endif %}</div>
+  <div class="card"><h2>How to set it up</h2>
+    <p style="margin:0 0 8px">Settings are environment variables on the server (on Render: the service's Environment tab). Nothing secret is kept in the database or shown here.</p>
+    <p class="muted" style="margin:0">Chat: in the Google Chat space choose Apps &amp; integrations, Webhooks, copy the address into <span class="mono">HD_CHAT_WEBHOOK</span>. Email: <span class="mono">HD_SMTP_HOST</span>, <span class="mono">HD_SMTP_PORT</span> (587 or 465), <span class="mono">HD_SMTP_USER</span>, <span class="mono">HD_SMTP_PASS</span>, <span class="mono">HD_SMTP_FROM</span>. Optional <span class="mono">HD_BASE_URL</span> for the links in messages.</p></div>
+</div>
+
+<div class="card flush"><h2>Last 50 messages</h2><div class="table-wrap"><table>
+  <thead><tr><th>When</th><th>Channel</th><th>To</th><th>About</th><th>Result</th></tr></thead>
+  <tbody>{% for r in rows %}<tr><td>{{ r.at }}</td><td>{{ r.channel }}</td><td>{{ r.recipient }}</td><td>{{ r.subject }}</td>
+    <td>{% if r.ok %}Sent{% else %}<b style="color:var(--bad)">Failed</b><div class="muted" style="font-size:12px">{{ r.error }}</div>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty">Nothing sent yet.</td></tr>{% endfor %}</tbody></table></div></div>
+{% endblock %}

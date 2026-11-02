@@ -351,3 +351,36 @@ def init(A):
             args = [f"%{term}%"] * 3
         rows = q(A.ASSET_SELECT + sql + " ORDER BY a.tag LIMIT ?", [*args, limit])
         return jsonify(count=len(rows), items=[api_item(a) for a in rows])
+
+    # Write-back from the Helpdesk: a fault ticket marks the asset Faulty, the last fix marks it Working. Off unless AMS_API_WRITE=1 as well as the token.
+    A.PUBLIC.add("api_ticket_event")
+    A.API_POST.add("api_ticket_event")
+
+    @app.route("/api/v1/assets/<path:code>/ticket-event", methods=["POST"])
+    def api_ticket_event(code):
+        if (bad := api_guard()):
+            return bad
+        if os.environ.get("AMS_API_WRITE") != "1":
+            return jsonify(error="Writing through the API is not switched on."), 403
+        j = request.get_json(silent=True) or {}
+        ticket, event = str(j.get("ticket", "")), j.get("event")
+        if event not in ("opened", "resolved") or not re.fullmatch(r"HD-\d{1,6}", ticket):
+            return jsonify(error="Send event (opened or resolved) and ticket (HD-0001)."), 400
+        a = q("SELECT * FROM assets WHERE tag=? COLLATE NOCASE AND archived_at IS NULL", (code.strip(),), one=True)
+        if not a:
+            return jsonify(error="No asset with that code."), 404
+        title = str(j.get("title", ""))[:120]
+        if event == "opened":
+            A.log(a["id"], f"Helpdesk {ticket} raised: {title}", etype="Helpdesk")
+            if a["condition"] == "Working":
+                db().execute("UPDATE assets SET condition='Faulty' WHERE id=?", (a["id"],))
+                A.sync_status(a["id"])
+                A.log(a["id"], f"Condition: Working → Faulty (from {ticket})", etype="Condition")
+        else:
+            A.log(a["id"], f"Helpdesk {ticket} resolved: {str(j.get('resolution', ''))[:200]}", etype="Helpdesk")
+            if j.get("mark_working") is True and a["condition"] == "Faulty":
+                db().execute("UPDATE assets SET condition='Working' WHERE id=?", (a["id"],))
+                A.sync_status(a["id"])
+                A.log(a["id"], f"Condition: Faulty → Working (from {ticket})", etype="Condition")
+        db().commit()
+        return jsonify(ok=True)

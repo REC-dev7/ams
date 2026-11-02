@@ -37,9 +37,16 @@
       {% if can('admin', 'technician') %}
       <a href="{{ url_for('tickets', stale=1) }}" class="{{ 'on' if ep == 'tickets' and request.args.get('stale') }}" {{ 'aria-current=page' if ep == 'tickets' and request.args.get('stale') }}>{{ icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>') }}Needs an update</a>
       {% endif %}
+      {% if user.role != 'staff' %}
+      <a href="{{ url_for('analytics') }}" class="{{ 'on' if ep == 'analytics' }}" {{ 'aria-current=page' if ep == 'analytics' }}>{{ icon('<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>') }}Analytics</a>
+      {% endif %}
+      {% if can('admin', 'technician') %}
+      <a href="{{ url_for('maintenance') }}" class="{{ 'on' if ep == 'maintenance' }}" {{ 'aria-current=page' if ep == 'maintenance' }}>{{ icon('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>') }}Planned maintenance</a>
+      {% endif %}
       {% if can('admin') %}
       <div class="sep">Admin</div>
       <a href="{{ url_for('settings') }}" class="{{ 'on' if ep == 'settings' }}" {{ 'aria-current=page' if ep == 'settings' }}>{{ icon('<path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>') }}Places &amp; departments</a>
+      <a href="{{ url_for('notifications') }}" class="{{ 'on' if ep == 'notifications' }}" {{ 'aria-current=page' if ep == 'notifications' }}>{{ icon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/>') }}Notifications</a>
       <a href="{{ url_for('users') }}" class="{{ 'on' if ep == 'users' }}" {{ 'aria-current=page' if ep == 'users' }}>{{ icon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>') }}Users</a>
       {% endif %}
     </nav>

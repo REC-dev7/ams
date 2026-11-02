@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import time
 from datetime import datetime, timedelta
 
 import app as m
@@ -321,9 +322,142 @@ def test_ams_over_the_web():
         m.AMS_URL, m.AMS_TOKEN, m.ams_http = real
 
 
+def test_notifications_analytics_maintenance_writeback():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "x.db")
+    m.init_db()
+    m.seed_demo()
+    x.last_check["at"] = time.time()  # keep the due-jobs check out of this test
+    c = m.app.test_client()
+    login(c, "admin", "demo-admin-2026")
+
+    # nothing is configured: nothing is sent, and the page says so
+    for k in ("HD_CHAT_WEBHOOK", "HD_SMTP_HOST", "HD_SMTP_FROM", "HD_AMS_WRITEBACK", "AMS_URL", "AMS_API_TOKEN"):
+        os.environ.pop(k, None)
+    assert b"Google Chat space" in c.get("/settings/notifications").data
+    assert b"Nothing is set up" in c.get(post(c, "/settings/notifications", {}, "/settings/notifications").location, follow_redirects=True).data
+
+    # configured: a new ticket reaches the chat space and the team's technicians; assign and resolve email the right people
+    sent = {"chat": [], "mail": [], "ams": []}
+    real = (x.send_chat, x.send_mail, x.send_ams)
+    x.send_chat = lambda url, text: sent["chat"].append((url, text))
+    x.send_mail = lambda msg: sent["mail"].append(msg)
+    x.send_ams = lambda path, payload: sent["ams"].append((path, payload))
+    os.environ.update(HD_CHAT_WEBHOOK="https://chat.example/hook", HD_SMTP_HOST="smtp.example", HD_SMTP_FROM="helpdesk@example.edu",
+                      HD_AMS_WRITEBACK="1", AMS_URL="https://ams.example", AMS_API_TOKEN="tok")
+    try:
+        ids = {u: i for i, u in sqlite3.connect(m.DB).execute("SELECT id, username FROM users")}
+        post(c, f"/users/{ids['tech']}/update", {"role": "technician", "team": "IT Network", "department": "", "email": "ravi@example.edu"}, "/users")
+        post(c, f"/users/{ids['staff']}/update", {"role": "staff", "department": "CSE", "email": "priya@example.edu"}, "/users")
+        assert row("SELECT email FROM users WHERE username='tech'")["email"] == "ravi@example.edu"
+        login(c, "staff", "demo-staff-2026")
+        tid = raise_ticket(c, "Lab Wi-Fi down", priority="Critical", asset_tag="AMS-00013", request_type="Fault", category="Wi-Fi / Internet")
+        x.wait()
+        assert len(sent["chat"]) == 1 and "CRITICAL" in sent["chat"][0][1] and f"HD-{tid:04d}" in sent["chat"][0][1]
+        assert [msg["To"] for msg in sent["mail"]] == ["ravi@example.edu"] and "Lab Wi-Fi down" in sent["mail"][0]["Subject"]
+        assert sent["ams"][0][0] == "/api/v1/assets/AMS-00013/ticket-event" and sent["ams"][0][1]["event"] == "opened"
+        login(c, "admin", "demo-admin-2026")
+        post(c, f"/tickets/{tid}/assign", {"assigned_to": str(ids["tech"])}, f"/tickets/{tid}")
+        x.wait()
+        assert sent["mail"][-1]["To"] == "ravi@example.edu" and "assigned to you" in sent["mail"][-1]["Subject"]
+        n = len(sent["mail"])
+        post(c, f"/tickets/{tid}/resolve", {"resolution": "Access point rebooted"}, f"/tickets/{tid}")
+        x.wait()
+        assert len(sent["mail"]) == n + 1 and sent["mail"][-1]["To"] == "priya@example.edu" and "please confirm" in sent["mail"][-1]["Subject"]
+        assert sent["ams"][-1][1]["event"] == "resolved" and sent["ams"][-1][1]["mark_working"] is True
+        assert row("SELECT COUNT(*) n FROM notify_log WHERE ok=1")["n"] >= 4
+        # a failing mail server is logged and never breaks the ticket
+        x.send_mail = lambda msg: (_ for _ in ()).throw(OSError("smtp down"))
+        login(c, "staff", "demo-staff-2026")
+        assert isinstance(raise_ticket(c, "Another one"), int)
+        x.wait()
+        assert row("SELECT error FROM notify_log WHERE ok=0")["error"] == "smtp down"
+        login(c, "admin", "demo-admin-2026")
+        assert b"smtp down" in c.get("/settings/notifications").data
+        # a newline in a title can't add a mail header
+        x.send_mail = lambda msg: sent["mail"].append(msg)
+        raise_ticket(c, "Bad\nBcc: evil@example.com")
+        x.wait()
+        assert all("Bcc" not in msg and "\n" not in msg["Subject"] for msg in sent["mail"])
+    finally:
+        x.send_chat, x.send_mail, x.send_ams = real
+        for k in ("HD_CHAT_WEBHOOK", "HD_SMTP_HOST", "HD_SMTP_FROM", "HD_AMS_WRITEBACK", "AMS_URL", "AMS_API_TOKEN"):
+            os.environ.pop(k, None)
+
+    # two open tickets on one asset: fixing the first must not mark the asset working
+    os.environ.update(HD_AMS_WRITEBACK="1", AMS_URL="https://ams.example", AMS_API_TOKEN="tok")
+    x.send_ams = lambda path, payload: sent["ams"].append((path, payload))
+    try:
+        a = raise_ticket(c, "Screen flickers", asset_tag="AMS-00099", request_type="Fault")
+        b = raise_ticket(c, "Keyboard dead", asset_tag="AMS-00099", request_type="Fault")
+        post(c, f"/tickets/{a}/resolve", {"resolution": "Cable"}, f"/tickets/{a}")
+        x.wait()
+        assert sent["ams"][-1][1]["mark_working"] is False
+        post(c, f"/tickets/{b}/resolve", {"resolution": "Keyboard"}, f"/tickets/{b}")
+        x.wait()
+        assert sent["ams"][-1][1]["mark_working"] is True
+    finally:
+        x.send_ams = real[2]
+        for k in ("HD_AMS_WRITEBACK", "AMS_URL", "AMS_API_TOKEN"):
+            os.environ.pop(k, None)
+
+    # analytics: IT and admins see it, the department head sees only the department, staff are refused
+    page = c.get("/analytics?days=90").get_data(as_text=True)
+    assert "Fixed on time" in page and "By technician" in page and "Places with repeat" in page
+    login(c, "hod", "demo-hod-2026")
+    assert c.get("/analytics").status_code == 200 and b"By technician" not in c.get("/analytics").data
+    login(c, "staff", "demo-staff-2026")
+    assert c.get("/analytics").status_code == 403 and c.get("/maintenance").status_code == 403 and c.get("/settings/notifications").status_code == 403
+
+    # planned maintenance: add, raise now, pause, delete
+    login(c, "tech", "demo-tech-2026")
+    assert b"Add a repeating job" in c.get("/maintenance").data
+    past = (datetime.now() - timedelta(days=200)).strftime("%Y-%m-%d")
+    assert b"Give a title" in c.get(post(c, "/maintenance/add", {"title": "", "every_days": "90"}, "/maintenance").location, follow_redirects=True).data
+    post(c, "/maintenance/add", {"title": "Check UPS batteries", "every_days": "90", "next_due": past, "category": "Power / UPS", "location": "A001 Server room"}, "/maintenance")
+    post(c, "/maintenance/add", {"title": "Clean filters", "every_days": "30", "location": "B101"}, "/maintenance")
+    before = row("SELECT COUNT(*) n FROM tickets")["n"]
+    mid = row("SELECT id FROM maintenance WHERE title='Check UPS batteries'")["id"]
+    post(c, f"/maintenance/{mid}/now", {}, "/maintenance")
+    assert row("SELECT COUNT(*) n FROM tickets")["n"] == before + 1
+    t = row("SELECT * FROM tickets ORDER BY id DESC LIMIT 1")
+    assert t["source"] == "Planned maintenance" and t["request_type"] == "Service request" and t["title"] == "Check UPS batteries"
+    assert row("SELECT last_ticket_id FROM maintenance WHERE id=?", mid)["last_ticket_id"] == t["id"]
+    other = row("SELECT id FROM maintenance WHERE title='Clean filters'")["id"]
+    post(c, f"/maintenance/{other}/pause", {}, "/maintenance")
+    assert row("SELECT active FROM maintenance WHERE id=?", other)["active"] == 0
+    post(c, f"/maintenance/{other}/delete", {}, "/maintenance")
+    assert row("SELECT COUNT(*) n FROM maintenance")["n"] == 1
+    assert c.post(f"/maintenance/{mid}/bogus", data={"csrf": csrf(c, "/maintenance")}).status_code == 404
+
+
+def test_due_maintenance_runs_by_itself():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "mt.db")
+    m.init_db()
+    m.seed_demo()
+    x.last_check["at"] = time.time()
+    c = m.app.test_client()
+    login(c, "admin", "demo-admin-2026")
+    past = (datetime.now() - timedelta(days=200)).strftime("%Y-%m-%d")
+    post(c, "/maintenance/add", {"title": "Check UPS", "every_days": "90", "next_due": past, "location": "A001 Server room"}, "/maintenance")
+    n = row("SELECT COUNT(*) n FROM tickets")["n"]
+    c.get("/")  # inside the throttle: nothing yet
+    assert row("SELECT COUNT(*) n FROM tickets")["n"] == n
+    x.last_check["at"] = 0
+    c.get("/")
+    c.get("/")  # a second visit right after: no second ticket
+    assert row("SELECT COUNT(*) n FROM tickets")["n"] == n + 1  # 200 days overdue is one ticket, not two
+    t = row("SELECT * FROM tickets ORDER BY id DESC LIMIT 1")
+    assert t["title"] == "Check UPS" and t["source"] == "Planned maintenance"
+    assert row("SELECT next_due FROM maintenance")["next_due"] > datetime.now().strftime("%Y-%m-%d")
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
     test_demo_data()
     test_ams_over_the_web()
+    test_notifications_analytics_maintenance_writeback()
+    test_due_maintenance_runs_by_itself()
     print("ok")

@@ -57,6 +57,23 @@ Open -> In progress -> (Waiting on requester) -> Resolved -> Closed. Every chang
 - **Log completed work**: technicians record walk-up or self-found fixes so they still count.
 - **Dashboard** (IT and auditor): last 30 days - first reply time, time to fix, % fixed in time, repeat places, open by team, active outages.
 
+## Notifications, analytics, planned maintenance
+
+All in `hd_extra.py`.
+
+- **Notifications** (admin: *Notifications*). A new ticket goes to a Google Chat space (critical ones flagged) and by email to the technicians of the ticket's team. Assigning emails the technician; resolving emails the requester to confirm. Each channel is **off until its settings exist** on the server:
+
+  | Setting | Meaning |
+  |---|---|
+  | `HD_CHAT_WEBHOOK` | Google Chat incoming-webhook address (`https://...`) |
+  | `HD_SMTP_HOST`, `HD_SMTP_PORT`, `HD_SMTP_USER`, `HD_SMTP_PASS`, `HD_SMTP_FROM` | outgoing mail (port 587 STARTTLS or 465 SSL) |
+  | `HD_BASE_URL` | public address, for the links in messages (optional) |
+
+  Add each person's email on the Users page. Sends run in the background; a failing mail server never blocks a ticket, and the result of the last 50 sends is listed on the Notifications page.
+- **Analytics** (everyone except staff; HODs and coordinators see their department): tickets by month, kind, team, department and priority, % fixed on time, median first reply and time to fix, places and equipment with repeat problems, and per-technician figures for admin and auditor. Period: 30 days, 90 days, a year or all time.
+- **Planned maintenance** (IT): a repeating job (weekly to yearly) raises a ticket by itself when its date comes, then moves the date on. A long gap raises one ticket, not a pile. Pause, delete, or *Raise now* from the list. The check runs when someone loads a page (at most every 5 minutes), so there is no extra scheduler to keep alive.
+- **Update the AMS** (off by default): with `HD_AMS_WRITEBACK=1` here and `AMS_API_WRITE=1` on the AMS (plus the shared `AMS_API_TOKEN`), a fault ticket that names an asset marks it Faulty, and fixing the last open ticket for it marks it Working. Both are written to the asset's history. Details in `../docs/API.md`.
+
 ## Fix-by times (SLA)
 
 Critical 4 h · High 1 day · Medium 3 days · Low 7 days, counted from when the ticket was raised.

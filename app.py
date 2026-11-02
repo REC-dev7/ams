@@ -392,6 +392,7 @@ def opt_float(v, label):
 # ---------- auth ----------
 
 PUBLIC = {"login", "setup", "static"}
+API_POST = set()  # bearer-token endpoints that take a JSON body instead of a form, so no CSRF token
 
 
 @app.before_request
@@ -399,7 +400,7 @@ def guard():
     if request.endpoint is None:
         return
     token = session.get("csrf")
-    if request.method == "POST" and (not token or not secrets.compare_digest(request.form.get("csrf", ""), token)):
+    if request.method == "POST" and request.endpoint not in API_POST and (not token or not secrets.compare_digest(request.form.get("csrf", ""), token)):
         abort(400, "Form expired, go back and try again.")
     if request.endpoint != "static" and not q("SELECT 1 FROM users LIMIT 1", one=True):
         return None if request.endpoint == "setup" else redirect(url_for("setup"))

@@ -60,7 +60,7 @@ FMT = "%Y-%m-%d %H:%M:%S"
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-  password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT);
+  password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT, email TEXT);
 CREATE TABLE IF NOT EXISTS departments (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL);
 CREATE TABLE IF NOT EXISTS locations (
   id INTEGER PRIMARY KEY, block TEXT NOT NULL, floor TEXT NOT NULL, room TEXT NOT NULL, UNIQUE (block, floor, room));
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 
 # columns added after the first release: applied to existing databases at startup
 MIGRATIONS = {
-    "users": [("department", "TEXT"), ("team", "TEXT")],
+    "users": [("department", "TEXT"), ("team", "TEXT"), ("email", "TEXT")],
     "tickets": [("request_type", "TEXT DEFAULT 'Fault'"), ("team", "TEXT"), ("department", "TEXT"),
                 ("location_id", "INTEGER REFERENCES locations(id)"), ("urgent_reason", "TEXT"), ("first_response_at", "TEXT"),
                 ("updated_at", "TEXT"), ("parent_id", "INTEGER REFERENCES tickets(id)"), ("parts_used", "TEXT"),
@@ -129,6 +129,7 @@ def q(sql, args=(), one=False):
 def init_db():
     with sqlite3.connect(DB) as c:
         c.executescript(SCHEMA)
+        c.executescript(hd_extra.SCHEMA)
         for table, cols in MIGRATIONS.items():
             have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
             for name, decl in cols:
@@ -138,8 +139,8 @@ def init_db():
             # first release allowed three roles only; SQLite can't drop a CHECK, so rebuild the table
             c.executescript("""PRAGMA foreign_keys=OFF;
                 CREATE TABLE users_new (id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
-                  password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT);
-                INSERT INTO users_new SELECT id, username, name, password_hash, role, department, team FROM users;
+                  password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT, email TEXT);
+                INSERT INTO users_new(id, username, name, password_hash, role, department, team) SELECT id, username, name, password_hash, role, department, team FROM users;
                 DROP TABLE users; ALTER TABLE users_new RENAME TO users; PRAGMA foreign_keys=ON;""")
         for old, new in OLD_CATEGORIES.items():
             c.execute("UPDATE tickets SET category=? WHERE category=?", (new, old))
@@ -920,8 +921,9 @@ def user_add():
         flash("Name, username, role and a password of 8+ characters are required.", "error")
     else:
         try:
-            db().execute("INSERT INTO users(username, name, password_hash, role, department, team) VALUES (?,?,?,?,?,?)",
-                         (f["username"].strip().lower(), f["name"].strip(), generate_password_hash(f["password"]), f["role"], *dept_team(f)))
+            db().execute("INSERT INTO users(username, name, password_hash, role, department, team, email) VALUES (?,?,?,?,?,?,?)",
+                         (f["username"].strip().lower(), f["name"].strip(), generate_password_hash(f["password"]), f["role"], *dept_team(f),
+                          f.get("email", "").strip() or None))
             db().commit()
             flash("User added.", "ok")
         except sqlite3.IntegrityError:
@@ -938,7 +940,7 @@ def user_update(uid):
         return redirect(url_for("users"))
     if f.get("role") in ROLES and uid != g.user["id"]:
         db().execute("UPDATE users SET role=? WHERE id=?", (f["role"], uid))
-    db().execute("UPDATE users SET department=?, team=? WHERE id=?", (*dept_team(f), uid))
+    db().execute("UPDATE users SET department=?, team=?, email=? WHERE id=?", (*dept_team(f), f.get("email", "").strip() or None, uid))
     if f.get("password"):
         db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(f["password"]), uid))
     db().commit()
@@ -1158,6 +1160,8 @@ def seed_demo():
         c.commit()
 
 
+import hd_extra  # notifications, analytics, planned maintenance, AMS write-back
+hd_extra.init(sys.modules[__name__])
 init_db()
 if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
     seed_demo()

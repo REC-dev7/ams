@@ -778,6 +778,47 @@ def test_findings_bulk_parts_contracts_api():
         os.environ.pop("AMS_API_TOKEN", None)
 
 
+def test_helpdesk_writeback():
+    m.DB = os.path.join(tempfile.mkdtemp(), "w.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    a1 = asset_id("L1-PC-01")
+    tag = row("SELECT tag FROM assets WHERE id=?", a1)["tag"]
+    anon = m.app.test_client()
+    url, auth = f"/api/v1/assets/{tag}/ticket-event", {"Authorization": "Bearer wb-token"}
+    body = {"event": "opened", "ticket": "HD-0007", "title": "Screen dead"}
+    os.environ.pop("AMS_API_TOKEN", None)
+    os.environ.pop("AMS_API_WRITE", None)
+    assert anon.post(url, json=body).status_code == 404  # API off
+    os.environ["AMS_API_TOKEN"] = "wb-token"
+    try:
+        assert anon.post(url, json=body).status_code == 401  # no token
+        assert anon.post(url, json=body, headers=auth).status_code == 403  # token alone can't write
+        os.environ["AMS_API_WRITE"] = "1"
+        assert anon.post(url, json={"event": "x", "ticket": "HD-1"}, headers=auth).status_code == 400
+        assert anon.post(url, json={"event": "opened", "ticket": "<b>"}, headers=auth).status_code == 400
+        assert anon.post("/api/v1/assets/NOPE/ticket-event", json=body, headers=auth).status_code == 404
+        assert row("SELECT condition FROM assets WHERE id=?", a1)["condition"] == "Working"
+        assert anon.post(url, json=body, headers=auth).status_code == 200
+        a = row("SELECT condition, status FROM assets WHERE id=?", a1)
+        assert (a["condition"], a["status"]) == ("Faulty", "Faulty")
+        assert row("SELECT 1 FROM activity WHERE asset_id=? AND text LIKE '%Faulty (from HD-0007)%'", a1)
+        # resolved but others still open: logged, still faulty; then the last one marks it working
+        assert anon.post(url, json={"event": "resolved", "ticket": "HD-0007", "resolution": "Cable", "mark_working": False}, headers=auth).status_code == 200
+        assert row("SELECT condition FROM assets WHERE id=?", a1)["condition"] == "Faulty"
+        assert anon.post(url, json={"event": "resolved", "ticket": "HD-0008", "resolution": "Panel", "mark_working": True}, headers=auth).status_code == 200
+        a = row("SELECT condition, status FROM assets WHERE id=?", a1)
+        assert (a["condition"], a["status"]) == ("Working", "Working")
+        assert row("SELECT COUNT(*) n FROM activity WHERE asset_id=? AND event_type='Helpdesk'", a1)["n"] == 3
+        # the read-only lookups still work and a form post without a token is still refused
+        assert anon.get(f"/api/v1/assets/{tag}", headers=auth).status_code == 200
+        assert anon.post("/login", data={"username": "x", "password": "y"}).status_code == 400
+    finally:
+        os.environ.pop("AMS_API_TOKEN", None)
+        os.environ.pop("AMS_API_WRITE", None)
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -787,4 +828,5 @@ if __name__ == "__main__":
     test_specs_stock_licences_reports()
     test_backup_and_restore()
     test_findings_bulk_parts_contracts_api()
+    test_helpdesk_writeback()
     print("ok")

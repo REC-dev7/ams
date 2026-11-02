@@ -1,0 +1,43 @@
+{% extends "base.html" %}{% block title %}Planned maintenance{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Planned maintenance</h1>
+  <div class="muted">Jobs that repeat, like checking the UPS or cleaning projector filters. A ticket is raised on its own when the date comes, and the next date is set. A long gap raises one ticket, not a pile.</div></div></div>
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Add a repeating job</h2>
+  <form method="post" action="{{ url_for('maintenance_add') }}" class="stack">{{ csrf }}
+    <div class="filters" style="margin:0">
+      <input name="title" placeholder="What to do, e.g. Check UPS batteries" required style="min-width:260px">
+      <select name="every_days" aria-label="How often">{% for d, l in EVERY.items() %}<option value="{{ d }}" {{ 'selected' if d == 90 }}>{{ l|capitalize }}</option>{% endfor %}</select>
+      <input type="date" name="next_due" aria-label="First date" title="First date (empty = today)">
+      <select name="category" aria-label="Kind of problem">{% for c in CATEGORIES %}<option>{{ c }}</option>{% endfor %}</select>
+      <select name="priority" aria-label="Priority">{% for p in PRIORITIES %}<option {{ 'selected' if p == 'Low' }}>{{ p }}</option>{% endfor %}</select>
+    </div>
+    <div class="filters" style="margin:0">
+      <select name="location_id" aria-label="Place"><option value="">Place…</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.block }} · {{ l.floor }} · {{ l.room }}</option>{% endfor %}</select>
+      <input name="asset_tag" placeholder="Asset tag (optional)" class="mono">
+      <input name="description" placeholder="Notes for the technician (optional)" style="min-width:260px">
+      <button class="btn">Add</button>
+    </div>
+  </form>
+</div>
+
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Job</th><th>Where</th><th>Repeats</th><th>Next ticket</th><th>Last ticket</th><th></th></tr></thead>
+  <tbody>
+  {% for m in rows %}
+    <tr {{ 'style=opacity:.55' if not m.active }}>
+      <td><b>{{ m.title }}</b><div class="muted" style="font-size:12px">{{ m.category }} · {{ m.priority }}{% if not m.active %} · paused{% endif %}</div></td>
+      <td>{{ m.location or '—' }}{% if m.asset_tag %}<div class="mono" style="font-size:12px">{{ m.asset_tag }}</div>{% endif %}</td>
+      <td>{{ EVERY.get(m.every_days, 'every ' ~ m.every_days ~ ' days') }}</td>
+      <td>{{ m.next_due }}</td>
+      <td>{% if m.last_ticket_id %}<a class="mono" href="{{ url_for('ticket', tid=m.last_ticket_id) }}">HD-{{ '%04d'|format(m.last_ticket_id) }}</a><div class="muted" style="font-size:12px">{{ m.last_run }}</div>{% else %}—{% endif %}</td>
+      <td><div class="actions">
+        <form method="post" action="{{ url_for('maintenance_act', mid=m.id, action='now') }}">{{ csrf }}<button class="btn sm ghost">Raise now</button></form>
+        <form method="post" action="{{ url_for('maintenance_act', mid=m.id, action='resume' if not m.active else 'pause') }}">{{ csrf }}<button class="btn sm ghost">{{ 'Resume' if not m.active else 'Pause' }}</button></form>
+        <form method="post" action="{{ url_for('maintenance_act', mid=m.id, action='delete') }}" onsubmit="return confirm('Delete this job? Tickets already raised stay.')">{{ csrf }}<button class="btn danger sm">Delete</button></form>
+      </div></td></tr>
+  {% else %}<tr><td colspan="6" class="empty">No repeating jobs yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

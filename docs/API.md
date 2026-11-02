@@ -46,6 +46,20 @@ curl -H "Authorization: Bearer $TOKEN" https://ams.example/api/v1/assets/AMS-000
 
 Matches tag, name or old code. Parts, archived and scrapped assets are left out. Returns `{"count": n, "items": [ ...same fields... ]}`.
 
+### Ticket events (write, off by default)
+
+`POST /api/v1/assets/<tag>/ticket-event` with a JSON body. Needs the bearer token **and** `AMS_API_WRITE=1` on the AMS (otherwise 403).
+
+```json
+{"event": "opened", "ticket": "HD-0007", "title": "Screen dead"}
+{"event": "resolved", "ticket": "HD-0007", "resolution": "Cable replaced", "mark_working": true}
+```
+
+- `opened`: adds a "Helpdesk HD-0007 raised" line to the asset's history, and changes condition Working → Faulty.
+- `resolved`: adds a history line; with `"mark_working": true` and the asset Faulty, condition goes back to Working. The Helpdesk sends `true` only when no other open ticket names that asset.
+- It changes nothing else (not place, holder, stage or costs) and writes no person's name, since the caller is a system. `400` for a bad event or ticket number, `404` for an unknown tag.
+- To switch on: `AMS_API_WRITE=1` on the AMS and `HD_AMS_WRITEBACK=1` on the Helpdesk.
+
 ## How the Helpdesk uses it
 
 - A ticket form's asset picker is filled from the search (cached for 5 minutes).
@@ -55,4 +69,4 @@ Matches tag, name or old code. Parts, archived and scrapped assets are left out.
 
 ## Not included yet
 
-Writing through the API (for example marking an asset faulty from a ticket), per-person API keys, and request logging. Those need the college's decision on who may change what.
+Writing anything beyond the two ticket events above, per-person API keys, and request logging. Those need the college's decision on who may change what.
