@@ -1,5 +1,17 @@
 {% macro status(s) -%}
-<span class="chip {{ {'Working':'good','Faulty':'bad','Under service':'warn'}.get(s, '') }}">{{ s }}</span>
+<span class="chip {{ {'Working':'good','Faulty':'bad','Under service':'warn','Lost':'bad'}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro stage(s) -%}
+<span class="chip {{ {'Deployed':'good','Under maintenance':'warn','Retirement proposed':'warn','Retirement approved':'warn','Awaiting disposal':'warn','Disposed':'bad','Lost / missing':'bad','Returned to vendor':'bad'}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro cond(s) -%}
+<span class="chip plain {{ {'Working':'good','Faulty':'bad','Obsolete':'warn'}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro verif(s) -%}
+<span class="chip plain {{ {'Verified':'good','Not found':'bad','Wrong location':'warn','Unresolved':'warn'}.get(s, '') }}">{{ s }}</span>
 {%- endmacro %}
 
 {% macro priority(p) -%}

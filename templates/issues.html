@@ -25,7 +25,7 @@
       <td><a class="mono" href="{{ url_for('asset', aid=i.asset_id) }}">{{ i.tag }}</a><div style="font-size:12px">{{ i.asset_name }}</div></td>
       <td>{{ i.room }}<div class="muted" style="font-size:12px">{{ i.building }}</div></td>
       <td>{{ i.reported_at[:16] }}<div class="muted" style="font-size:12px">{{ i.reporter or '' }}</div></td>
-      <td>{% if i.status == 'Open' and can('admin', 'technician') %}
+      <td>{% if i.status == 'Open' and can('edit') %}
         <form method="post" action="{{ url_for('issue_resolve', iid=i.id) }}" class="actions">{{ csrf }}
           <input type="hidden" name="back" value="{{ request.full_path }}">
           <input name="resolution" aria-label="Fix done" placeholder="Fix done" style="width:140px">

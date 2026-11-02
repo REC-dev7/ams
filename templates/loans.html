@@ -8,8 +8,8 @@
   {% for a in rows %}
     <tr>
       <td><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }}<div class="muted" style="font-size:12px">{{ a.cat or '' }}</div></td>
-      <td><b>{{ a.assigned_to }}</b></td>
-      <td>{{ a.assigned_due or '—' }} {% if a.assigned_due and a.assigned_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</td>
+      <td><b>{{ a.lent_to }}</b></td>
+      <td>{{ a.lent_due or '—' }} {% if a.lent_due and a.lent_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</td>
       <td>{{ a.building }} · {{ a.room }}</td>
       <td>{{ status(a.status) }}</td>
     </tr>

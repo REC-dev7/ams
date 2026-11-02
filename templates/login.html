@@ -12,7 +12,7 @@
   <p class="muted" style="margin:0 0 8px;font-size:13px">Demo mode: sign in as</p>
   <div class="actions">
     {% for u, n, r in demo %}
-    <button type="button" class="btn ghost sm" onclick="demoLogin('{{ u }}')">{{ r|capitalize }}</button>
+    <button type="button" class="btn ghost sm" onclick="demoLogin('{{ u }}')">{{ n }}</button>
     {% endfor %}
   </div>
 </div>

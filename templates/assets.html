@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_ui.html" import status %}
+{% extends "base.html" %}{% from "_ui.html" import status, stage, cond, verif %}
 {% from "_ui.html" import pager %}
 {% block title %}Assets{% endblock %}
 {% block body %}
@@ -8,7 +8,7 @@
   <div class="actions">
     <a class="btn ghost" href="{{ url_for('assets', **dict(a, export='csv')) }}">Export CSV</a>
     {% if can('admin') %}<a class="btn ghost" href="{{ url_for('asset_import') }}">Import CSV</a>{% endif %}
-    {% if can('admin', 'technician') %}<a class="btn" href="{{ url_for('asset_new') }}">+ Add asset</a>{% endif %}
+    {% if can('edit') %}<a class="btn" href="{{ url_for('asset_new') }}">+ Add asset</a>{% endif %}
   </div>
 </div>
 
@@ -22,25 +22,33 @@
     {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if a.category == c.id|string }}>{{ c.name }}</option>{% endfor %}</select>
   <select name="status" aria-label="Status"><option value="">All status</option>
     {% for s in STATUSES %}<option {{ 'selected' if a.status == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="dept" aria-label="Department"><option value="">All departments</option>
+    {% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if a.dept == d.id|string }}>{{ d.name }}</option>{% endfor %}</select>
+  <select name="stage" aria-label="Life stage"><option value="">Any stage</option>{% for s in LIFECYCLE %}<option {{ 'selected' if a.stage == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="condition" aria-label="Condition"><option value="">Any condition</option>{% for s in CONDITIONS %}<option {{ 'selected' if a.condition == s }}>{{ s }}</option>{% endfor %}</select>
+  <select name="verification" aria-label="Verification"><option value="">Any verification</option>{% for s in VERIFICATION %}<option {{ 'selected' if a.verification == s }}>{{ s }}</option>{% endfor %}</select>
+  <label class="check"><input type="checkbox" name="unverified" value="1" {{ 'checked' if a.unverified }}> Not verified in 12 months</label>
   <label class="check"><input type="checkbox" name="parts" value="1" {{ 'checked' if a.parts }}> Include parts</label>
+  <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if a.archived }}> Include archived</label>
   <button class="btn">Filter</button>
   {% if a %}<a class="btn ghost" href="{{ url_for('assets') }}">Clear</a>{% endif %}
 </form>
 
 <div class="card flush"><div class="table-wrap"><table>
-  <thead><tr><th>Tag</th><th>Name</th><th>Category</th><th>Location</th><th>Make / model</th><th>Status</th><th>Issues</th></tr></thead>
+  <thead><tr><th>Tag</th><th>Name</th><th>Category</th><th>Location</th><th>Make / model</th><th>Department</th><th>Stage</th><th>Issues</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
       <td><a class="mono" href="{{ url_for('asset', aid=r.id) }}">{{ r.tag }}</a></td>
       <td><b>{{ r.name }}</b>{% if r.parent_tag %}<div class="muted" style="font-size:12px">part of {{ r.parent_tag }}</div>{% elif r.part_count %}<div class="muted" style="font-size:12px">{{ r.part_count }} parts</div>{% endif %}</td>
       <td>{{ r.cat or '—' }}</td>
-      <td>{% if r.room_id %}<a href="{{ url_for('room', rid=r.room_id) }}">{{ r.room }}</a><div class="muted" style="font-size:12px">{{ r.building }}</div>{% endif %}</td>
+      <td>{% if r.room_id %}<a href="{{ url_for('room', rid=r.room_id) }}">{{ r.room }}</a><div class="muted" style="font-size:12px">{{ r.building }}</div>{% else %}<span class="chip plain bad">unknown</span>{% endif %}</td>
       <td>{{ r.brand or '' }} {{ r.model or '' }}</td>
-      <td>{{ status(r.status) }}</td>
+      <td>{{ r.managing_dept or '—' }}{% if r.custodian %}<div class="muted" style="font-size:12px">with {{ r.custodian }}</div>{% endif %}</td>
+      <td>{{ stage(r.lifecycle_stage) }} {{ cond(r.condition) }}</td>
       <td>{% if r.open_issues %}<span class="badge">{{ r.open_issues }}</span>{% endif %}</td>
     </tr>
-  {% else %}<tr><td colspan="7" class="empty">No assets match.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="8" class="empty">No assets match.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
 {{ pager(pg) }}

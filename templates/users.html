@@ -2,30 +2,47 @@
 {% from "_ui.html" import pager %}
 {% block body %}
 <div class="head"><div><h1>Users</h1>
-  <div class="muted"><b>Admin</b>: everything · <b>Technician</b>: add/edit assets, log service, resolve issues · <b>Staff</b>: view and report issues</div></div></div>
+  <div class="muted">Pick a main role and, if needed, extra roles. Department roles (HOD, lab assistant, custodian) only see their own department's assets plus any extra departments you give them.</div></div></div>
 
 <div class="card" style="margin-bottom:16px">
   <h2>Add user</h2>
-  <form method="post" action="{{ url_for('user_add') }}" class="filters" style="margin:0">{{ csrf }}
-    <input name="name" placeholder="Full name" required>
-    <input name="username" placeholder="Username" required autocomplete="off">
-    <select name="role">{% for r in ROLES %}<option {{ 'selected' if r == 'staff' }}>{{ r }}</option>{% endfor %}</select>
-    <input name="password" type="password" placeholder="Password (8+)" minlength="8" required autocomplete="new-password">
-    <button class="btn">Add user</button>
+  <form method="post" action="{{ url_for('user_add') }}" class="stack">{{ csrf }}
+    <div class="form-grid">
+      <label>Full name <input name="name" required></label>
+      <label>Username <input name="username" required autocomplete="off"></label>
+      <label>Main role <select name="role">{% for r in ROLES if can('super_admin') or r not in PRIVILEGED %}<option value="{{ r }}" {{ 'selected' if r == 'custodian' }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select></label>
+      <label>Department <select name="department_id"><option value="">None</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>
+      <label>Password (8+) <input name="password" type="password" minlength="8" required autocomplete="new-password"></label>
+    </div>
+    <details><summary class="muted" style="cursor:pointer">Extra roles and departments (optional)</summary>
+      <div class="actions" style="margin-top:8px">{% for r in ROLES if can('super_admin') or r not in PRIVILEGED %}<label class="check"><input type="checkbox" name="extra_roles" value="{{ r }}"> {{ ROLE_LABEL[r] }}</label>{% endfor %}</div>
+      <div class="actions" style="margin-top:8px">{% for d in departments %}<label class="check"><input type="checkbox" name="scopes" value="{{ d.id }}"> {{ d.name }}</label>{% endfor %}</div>
+    </details>
+    <div><button class="btn">Add user</button></div>
   </form>
 </div>
 
 <form class="filters"><input type="search" name="q" value="{{ request.args.q }}" aria-label="Search users" placeholder="Search name or username…"><button class="btn">Search</button></form>
 
 <div class="card flush"><div class="table-wrap"><table>
-  <thead><tr><th>Name</th><th>Username</th><th>Role / reset password</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Username</th><th>Role, department, new password</th><th></th></tr></thead>
   <tbody>
   {% for u in rows %}
-    <tr><td><b>{{ u.name }}</b>{% if u.id == user.id %} <span class="muted">(you)</span>{% endif %}</td><td class="mono">{{ u.username }}</td>
-      <td><form method="post" action="{{ url_for('user_update', uid=u.id) }}" class="actions">{{ csrf }}
-        <select name="role" style="width:auto" {{ 'disabled' if u.id == user.id }}>{% for r in ROLES %}<option {{ 'selected' if u.role == r }}>{{ r }}</option>{% endfor %}</select>
-        <input name="password" type="password" placeholder="New password" minlength="8" style="width:160px" autocomplete="new-password">
-        <button class="btn sm ghost">Save</button></form></td>
+    {% set mine = roles_of(u) %}
+    <tr><td><b>{{ u.name }}</b>{% if u.id == user.id %} <span class="muted">(you)</span>{% endif %}
+        <div class="muted" style="font-size:12px">{% for r in mine %}{{ ROLE_LABEL[r] }}{{ ', ' if not loop.last }}{% endfor %}</div></td>
+      <td class="mono">{{ u.username }}</td>
+      <td><form method="post" action="{{ url_for('user_update', uid=u.id) }}" class="stack">{{ csrf }}
+        <div class="actions">
+          <select name="role" aria-label="Main role" style="width:auto" {{ 'disabled' if u.id == user.id }}>{% for r in ROLES %}<option value="{{ r }}" {{ 'selected' if u.role == r }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select>
+          <select name="department_id" aria-label="Department" style="width:auto"><option value="">No department</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if u.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select>
+          <input name="password" type="password" placeholder="New password" minlength="8" style="width:150px" autocomplete="new-password">
+          <button class="btn sm ghost">Save</button>
+        </div>
+        <details><summary class="muted" style="cursor:pointer">Extra roles and departments</summary>
+          <div class="actions" style="margin-top:6px">{% for r in ROLES if r != u.role %}<label class="check"><input type="checkbox" name="extra_roles" value="{{ r }}" {{ 'checked' if r in mine }} {{ 'disabled' if u.id == user.id }}> {{ ROLE_LABEL[r] }}</label>{% endfor %}</div>
+          <div class="actions" style="margin-top:6px">{% for d in departments %}<label class="check"><input type="checkbox" name="scopes" value="{{ d.id }}" {{ 'checked' if d.id in scopes.get(u.id, []) }}> {{ d.name }}</label>{% endfor %}</div>
+        </details></form></td>
       <td>{% if u.id != user.id %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }}?')">{{ csrf }}<button class="btn danger sm">Delete</button></form>{% endif %}</td></tr>
   {% endfor %}
   </tbody>

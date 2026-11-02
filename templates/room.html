@@ -14,10 +14,10 @@
     <div class="muted">{{ room.type }}{% if room.floor %} · Floor {{ room.floor }}{% endif %} · {{ total }} item{{ 's' if total != 1 }}</div>
   </div>
   <div class="actions">
-    {% if can('admin', 'technician') and not audit %}<a class="btn ghost" href="{{ url_for('room', rid=room.id, audit=1) }}">Verify stock</a>{% endif %}
+    {% if can('move') and not audit %}<a class="btn ghost" href="{{ url_for('room', rid=room.id, audit=1) }}">Verify stock</a>{% endif %}
     <a class="btn ghost" href="{{ url_for('register', room=room.id) }}">Stock register</a>
     <a class="btn ghost" href="{{ url_for('labels', room=room.id) }}">QR labels</a>
-    {% if can('admin', 'technician') %}<a class="btn" href="{{ url_for('asset_new', room=room.id) }}">+ Add asset here</a>{% endif %}
+    {% if can('edit') %}<a class="btn" href="{{ url_for('asset_new', room=room.id) }}">+ Add asset here</a>{% endif %}
   </div>
 </div>
 

@@ -1,17 +1,17 @@
-{% extends "base.html" %}{% from "_ui.html" import status, priority %}
+{% extends "base.html" %}{% from "_ui.html" import status, priority, stage, cond, verif %}
 {% from "_ui.html" import gallery %}
 {% block title %}{{ a.tag }} {{ a.name }}{% endblock %}
 {% block body %}
 <div class="head">
   <div>
-    <div class="crumbs"><a href="{{ url_for('locations') }}">{{ a.building }}</a> / <a href="{{ url_for('room', rid=a.room_id) }}">{{ a.room }}</a>
+    <div class="crumbs">{% if a.room_id %}<a href="{{ url_for('locations') }}">{{ a.building }}</a> / <a href="{{ url_for('room', rid=a.room_id) }}">{{ a.room }}</a>{% else %}<span class="chip plain bad">location not known</span>{% endif %}
       {% if a.parent_id %} / <a href="{{ url_for('asset', aid=a.parent_id) }}">{{ a.parent_tag }} {{ a.parent_name }}</a>{% endif %}</div>
-    <h1><span class="mono muted">{{ a.tag }}</span> {{ a.name }} {{ status(a.status) }}</h1>
-    <div class="muted">{{ a.cat or 'Uncategorised' }}{% if a.brand or a.model %} · {{ a.brand or '' }} {{ a.model or '' }}{% endif %}</div>
+    <h1><span class="mono muted">{{ a.tag }}</span> {{ a.name }} {{ stage(a.lifecycle_stage) }} {{ cond(a.condition) }}{% if a.archived_at %} <span class="chip plain bad">archived</span>{% endif %}</h1>
+    <div class="muted">{{ a.cat or 'Uncategorised' }}{% if a.brand or a.model %} · {{ a.brand or '' }} {{ a.model or '' }}{% endif %}{% if a.managing_dept %} · managed by {{ a.managing_dept }}{% endif %}</div>
   </div>
   <div class="actions">
     <a class="btn ghost" href="{{ url_for('labels', asset=a.id) }}">QR label</a>
-    {% if can('admin', 'technician') %}
+    {% if can('edit') %}
       {% if not a.parent_id %}<a class="btn ghost" href="{{ url_for('asset_new', parent=a.id) }}">+ Add part</a>{% endif %}
       <a class="btn ghost" href="{{ url_for('asset_new', copy=a.id) }}">Duplicate</a>
       <a class="btn" href="{{ url_for('asset_edit', aid=a.id) }}">Edit</a>
@@ -21,46 +21,103 @@
 
 <div class="card" style="margin-bottom:16px">
   <div class="facts">
-    <div><span>Location</span><b>{{ a.building }} · {{ a.room }}</b></div>
+    <div><span>Location</span><b>{% if a.room_id %}{{ a.building }} · {{ a.room }}{% else %}Not known yet{% endif %}</b></div>
+    <div><span>Managing department</span><b>{{ a.managing_dept or '—' }}</b></div>
+    <div><span>Owning department</span><b>{{ a.owning_dept or '—' }}</b></div>
+    <div><span>Used by</span><b>{{ a.using_dept or ('Stockroom' if a.lifecycle_stage == 'In stock' else '—') }}</b></div>
+    <div><span>Verified</span><b>{% if a.verification %}{{ verif(a.verification) }}{% else %}Never{% endif %}</b><div class="muted" style="font-size:12px">{{ a.last_audit or '' }}</div></div>
     <div><span>Serial no</span><b class="mono">{{ a.serial_no or '—' }}</b></div>
     <div><span>IP / MAC</span><b class="mono">{{ a.ip_address or '—' }}{% if a.mac_address %}<br>{{ a.mac_address }}{% endif %}</b></div>
+    <div><span>Old asset code</span><b class="mono">{{ a.legacy_code or '—' }}</b></div>
+    <div><span>Acquired by</span><b>{{ a.acquisition_basis or 'Unknown' }}</b></div>
     <div><span>Vendor</span><b>{{ a.vendor or '—' }}</b></div>
     <div><span>Purchased</span><b>{{ a.purchase_date or '—' }}</b></div>
     <div><span>Warranty until</span><b>{{ a.warranty_until or '—' }}
       {% if a.warranty_until and a.warranty_until < today %}<span class="chip plain bad">expired</span>{% endif %}</b></div>
-    <div><span>Cost</span><b>{{ '₹{:,.0f}'.format(a.cost) if a.cost is not none else '—' }}</b></div>
+    <div><span>Cost</span><b>{{ '₹{:,.0f}'.format(a.cost) if a.cost is not none else '—' }}</b>
+      {% if a.cost is not none and (a.cost_basis or a.tax_included is not none) %}<div class="muted" style="font-size:12px">{{ a.cost_basis or '' }}{% if a.tax_included is not none %} · {{ 'tax included' if a.tax_included else 'tax not included' }}{% endif %}</div>{% endif %}</div>
     {% set bv = book_value(a.cost, a.purchase_date, a.life_years) %}
     <div><span>Book value today</span><b>{{ '₹{:,.0f}'.format(bv) if bv is not none else '—' }}</b>
       {% if a.cost and a.purchase_date %}<div class="muted" style="font-size:12px">{{ a.life_years or 5 }}-yr straight line</div>{% endif %}</div>
-    <div><span>Last verified</span><b>{{ a.last_audit or 'never' }}</b></div>
     <div><span>Next service</span><b>{{ a.next_service_due or '—' }}
       {% if a.next_service_due and a.next_service_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</b></div>
+    {% for label, val in [('PO', a.po_number), ('Invoice', a.invoice_number), ('Indent', a.indent_no), ('CPR', a.cpr_no), ('GRN', a.grn_no), ('Stock register', a.stock_register_ref)] if val %}
+    <div><span>{{ label }}</span><b class="mono">{{ val }}</b></div>
+    {% endfor %}
   </div>
   {% if a.notes %}<p style="margin:14px 0 0;white-space:pre-line">{{ a.notes }}</p>{% endif %}
+  {% if a.archived_at %}<p style="margin:14px 0 0"><b>Archived</b> {{ a.archived_at[:10] }}: {{ a.archive_reason }}</p>{% endif %}
 </div>
 
-{% if a.assigned_to or (can('admin', 'technician') and not a.parent_id) %}
-<div class="card" style="margin-bottom:16px">
-  {% if a.assigned_to %}
-  <div class="actions" style="justify-content:space-between">
-    <div><h2 style="margin:0">Lent to {{ a.assigned_to }}</h2>
-      <div class="muted">Due back {{ a.assigned_due or '—' }} {% if a.assigned_due and a.assigned_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</div></div>
-    {% if can('admin', 'technician') %}
-    <form method="post" action="{{ url_for('asset_lend', aid=a.id) }}">{{ csrf }}<input type="hidden" name="action" value="return"><button class="btn">Mark returned</button></form>
+{% if not a.parent_id %}
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <h2>Who has it</h2>
+    {% if custody and custody.holder_type != 'Stockroom' %}
+      <p style="margin:0"><b>{{ custody.person or '' }}{% if custody.person and custody.department_id %} · {% endif %}{% for d in departments if d.id == custody.department_id %}{{ d.name }}{% endfor %}</b>
+        <span class="muted">since {{ custody.started_on }}</span>
+        {% if custody.due_date %}<span class="muted"> · due back {{ custody.due_date }}</span> {% if custody.due_date < today %}<span class="chip plain bad">overdue</span>{% endif %}{% endif %}</p>
+      {% if custody.ack_at %}<p class="muted" style="margin:4px 0 0">Receipt acknowledged by {{ custody.ack_by }} on {{ custody.ack_at }}</p>
+      {% elif custody.person %}<form method="post" action="{{ url_for('custody_ack', cid=custody.id) }}" style="margin-top:8px">{{ csrf }}<button class="btn sm ghost">Acknowledge receipt</button></form>{% endif %}
+    {% else %}<p style="margin:0"><b>Stockroom</b> <span class="muted">{{ 'not issued to anyone' if a.lifecycle_stage == 'In stock' else '' }}</span></p>{% endif %}
+    {% if can('move') and a.lifecycle_stage in ('In stock', 'Deployed') and not a.archived_at %}
+    <details class="drop" style="margin-top:12px"><summary class="head" style="margin:0"><span class="btn sm">Issue, return or transfer</span></summary>
+      <form method="post" action="{{ url_for('asset_custody', aid=a.id) }}" class="stack" style="margin-top:12px">{{ csrf }}
+        <input type="hidden" name="expected" value="{{ custody.id if custody else 0 }}">
+        <div class="form-grid">
+          <label>Now held by <select name="to">{% for h in HOLDERS %}<option>{{ h }}</option>{% endfor %}</select></label>
+          <label>Department <select name="department_id"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>
+          <label>Person (if a person holds it) <input name="person" placeholder="Name"></label>
+          <label>Due back (loans) <input type="date" name="due_date"></label>
+          <label>New room (if it moves) <select name="room_id"><option value="">Stays in {{ a.room or 'its room' }}</option>
+            {% for b in buildings %}<optgroup label="{{ b.name }}">{% for r in rooms if r.building_id == b.id %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+          <label>Date it happened <input type="date" name="event_date" value="{{ today }}" max="{{ today }}"></label>
+          <label class="full">Why? * <input name="reason" required placeholder="e.g. new lab setup, repair finished, staff left"></label>
+          <label class="full">Approval reference (if any) <input name="approval_ref" placeholder="e.g. HOD email, memo number"></label>
+        </div>
+        <div><button class="btn">Save</button></div>
+      </form></details>
     {% endif %}
+    {% if custody_history|length > 1 or (custody_history and not custody) %}
+    <details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Who has had it ({{ custody_history|length }})</summary>
+      <ul class="timeline">{% for c in custody_history %}<li>{{ c.holder_type }}: <b>{{ c.person or c.dept or 'Stockroom' }}</b>{% if c.person and c.dept %} ({{ c.dept }}){% endif %}
+        <div class="when">{{ c.started_on }} → {{ c.ended_on or 'now' }}{% if c.reason %} · {{ c.reason }}{% endif %}{% if c.by_name %} · {{ c.by_name }}{% endif %}</div></li>{% endfor %}</ul>
+    </details>{% endif %}
   </div>
-  {% else %}
-  <details class="drop">
-    <summary class="head" style="margin:0"><h2 style="margin:0">Lend out</h2><span class="btn sm ghost">Lend to staff</span></summary>
-    <form method="post" action="{{ url_for('asset_lend', aid=a.id) }}" class="filters" style="margin:0">{{ csrf }}
-      <input name="assigned_to" placeholder="Staff name / dept" aria-label="Lent to" required>
-      <input type="date" name="assigned_due" aria-label="Due back">
-      <button class="btn">Lend</button>
+
+  <div class="card">
+    <h2>Life stage <span class="muted" style="font-weight:500">{{ stage(a.lifecycle_stage) }}</span></h2>
+    {% if next_stages and can('move') and not a.archived_at %}
+    <form method="post" action="{{ url_for('asset_lifecycle', aid=a.id) }}" class="stack">{{ csrf }}
+      <div class="form-grid">
+        <label>Move to <select name="to_stage">{% for n in next_stages %}<option>{{ n }}</option>{% endfor %}</select></label>
+        <label>Date it happened <input type="date" name="event_date" value="{{ today }}" max="{{ today }}"></label>
+        <label class="full">Why? * <input name="reason" required placeholder="e.g. beyond repair, accepted after inspection"></label>
+        <label class="full">Evidence reference (needed to dispose) <input name="evidence" placeholder="e.g. e-waste receipt no, certificate no"></label>
+      </div>
+      <label class="check"><input type="checkbox" name="data_erased" value="1"> Stored data was erased (computers, servers, disks)</label>
+      <div class="muted" style="font-size:12px">Retirement: one person proposes, a different HOD or admin approves, then it waits for disposal.</div>
+      <div><button class="btn">Update stage</button></div>
     </form>
-  </details>
-  {% endif %}
+    {% elif not next_stages %}<p class="muted" style="margin:0">This is the final stage. The record stays for history.</p>{% endif %}
+  </div>
 </div>
 {% endif %}
+
+<div class="card" style="margin-bottom:16px">
+  <h2>Other codes &amp; IDs</h2>
+  <ul class="plain">
+    {% for i in identifiers %}<li><span class="chip plain">{{ ID_KINDS[i.kind] }}</span> <span class="mono">{{ i.value }}</span>{% if i.source %} <span class="muted">({{ i.source }})</span>{% endif %}</li>
+    {% else %}<li class="muted">None recorded. Old codes and IDs from other systems can be added so staff can still search for them.</li>{% endfor %}
+  </ul>
+  {% if can('edit') %}
+  <form method="post" action="{{ url_for('asset_identifier', aid=a.id) }}" class="filters" style="margin:12px 0 0">{{ csrf }}
+    <select name="kind" aria-label="Kind"><option value="legacy_code">Old asset code</option><option value="external">Other system ID</option></select>
+    <input name="value" placeholder="Code or ID" required>
+    <input name="source" placeholder="From which system (for IDs)">
+    <button class="btn sm">Add</button>
+  </form>{% endif %}
+</div>
 
 {% if parts or not a.parent_id %}
 <div class="card flush" style="margin-bottom:16px">
@@ -71,7 +128,7 @@
     {% for p in parts %}
       <tr><td><a class="mono" href="{{ url_for('asset', aid=p.id) }}">{{ p.tag }}</a></td><td>{{ p.name }}</td><td>{{ p.cat or '—' }}</td>
           <td>{{ p.brand or '' }} {{ p.model or '' }}</td><td class="mono">{{ p.serial_no or '' }}</td><td>{{ status(p.status) }}</td></tr>
-    {% else %}<tr><td colspan="6" class="empty">No parts recorded. {% if can('admin', 'technician') %}<a href="{{ url_for('asset_new', parent=a.id) }}">Add RAM, disk, monitor…</a>{% endif %}</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="6" class="empty">No parts recorded. {% if can('edit') %}<a href="{{ url_for('asset_new', parent=a.id) }}">Add RAM, disk, monitor…</a>{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table></div>
 </div>
@@ -80,7 +137,7 @@
 <div class="card" style="margin-bottom:16px">
   <h2>Photos</h2>
   {{ gallery(photos, 'No photos yet.') }}
-  {% if can('admin', 'technician') %}
+  {% if can('edit') %}
   <form method="post" action="{{ url_for('asset_photos', aid=a.id) }}" enctype="multipart/form-data" class="actions">{{ csrf }}
     <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple required aria-label="Photos">
     <button class="btn sm">Add photos</button>
@@ -99,7 +156,7 @@
         </div>
         <label>Details <textarea name="description"></textarea></label>
         <label>Photos (optional) <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label>
-        <label class="check"><input type="checkbox" name="mark_faulty" value="1"> Mark asset as Faulty</label>
+        <label class="check"><input type="checkbox" name="mark_faulty" value="1"> Set condition to Faulty</label>
         <div><button class="btn">Submit issue</button></div>
       </form>
     </details>
@@ -111,10 +168,10 @@
       {% if i.description %}<p>{{ i.description }}</p>{% endif %}
       {% if i.status == 'Resolved' %}
         <p><b>Fix:</b> {{ i.resolution or '—' }} <span class="muted">({{ i.resolved_at[:16] }}{% if i.resolver %}, {{ i.resolver }}{% endif %})</span></p>
-      {% elif can('admin', 'technician') %}
+      {% elif can('edit') %}
         <form method="post" action="{{ url_for('issue_resolve', iid=i.id) }}" class="actions" style="margin-top:8px">{{ csrf }}
           <input name="resolution" placeholder="What was done?" style="flex:1;min-width:160px">
-          <label class="check"><input type="checkbox" name="mark_working" value="1" checked> Set Working</label>
+          <label class="check"><input type="checkbox" name="mark_working" value="1" checked> Condition back to Working</label>
           <button class="btn sm">Resolve</button>
         </form>
       {% endif %}
@@ -123,7 +180,7 @@
   </div>
 
   <div class="card">
-    {% if can('admin', 'technician') %}
+    {% if can('edit') %}
     <details class="drop">
       <summary class="head" style="margin:0"><h2 style="margin:0">Service history</h2><span class="btn sm">Log service</span></summary>
       <form method="post" action="{{ url_for('service_new', aid=a.id) }}" class="stack" style="margin-bottom:16px">{{ csrf }}
@@ -133,7 +190,7 @@
           <label>Done by <input name="done_by" placeholder="{{ user.name }}"></label>
           <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost"></label>
           <label>Next service due <input type="date" name="next_due"></label>
-          <label>Set status <select name="status"><option value="">(no change)</option>{% for s in STATUSES %}<option>{{ s }}</option>{% endfor %}</select></label>
+          <label>Condition afterwards <select name="condition"><option value="">(no change)</option>{% for s in CONDITIONS %}<option>{{ s }}</option>{% endfor %}</select></label>
         </div>
         <label>Work done <textarea name="description" placeholder="e.g. Replaced SMPS, cleaned dust, reinstalled OS"></textarea></label>
         <div><button class="btn">Save service</button></div>
@@ -151,13 +208,17 @@
 </div>
 
 <div class="card">
-  <h2>Activity</h2>
+  <h2>History</h2>
   <ul class="timeline">
-    {% for r in activity %}<li>{{ r.text }}<div class="when">{{ r.at }}{% if r.who %} · {{ r.who }}{% endif %}</div></li>{% endfor %}
+    {% for r in activity %}<li>{% if r.event_type %}<span class="chip plain">{{ r.event_type }}</span> {% endif %}{{ r.text }}
+      {% if r.reason %}<div class="muted" style="font-size:13px">Why: {{ r.reason }}</div>{% endif %}
+      {% if r.approval_ref %}<div class="muted" style="font-size:13px">Reference: {{ r.approval_ref }}</div>{% endif %}
+      <div class="when">{% if r.event_date and r.event_date != r.at[:10] %}happened {{ r.event_date }} · entered {{ r.at[:16] }}{% else %}{{ r.at[:16] }}{% endif %}{% if r.who %} · {{ r.who }}{% endif %}</div></li>{% endfor %}
   </ul>
-  {% if can('admin') %}
-  <form method="post" action="{{ url_for('asset_delete', aid=a.id) }}" onsubmit="return confirm('Delete {{ a.tag }} and all its history? Use status Scrapped instead to keep records.')" style="margin-top:16px">{{ csrf }}
-    <button class="btn danger sm">Delete asset</button>
+  {% if can('admin') and not a.archived_at %}
+  <form method="post" action="{{ url_for('asset_delete', aid=a.id) }}" class="filters" onsubmit="return confirm('Archive {{ a.tag }}? It leaves the active lists, but its record, history and tag are kept.')" style="margin-top:16px">{{ csrf }}
+    <input name="reason" placeholder="Why archive it? (entered by mistake, duplicate…)" required style="min-width:280px">
+    <button class="btn danger sm">Archive asset</button>
   </form>
   {% endif %}
 </div>
