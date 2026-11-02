@@ -1,21 +1,37 @@
-{% extends "base.html" %}{% block title %}Raise a ticket{% endblock %}
+{% extends "base.html" %}{% from "_ui.html" import location_picker %}{% block title %}Raise a ticket{% endblock %}
 {% block body %}
+{% set rich = user.role in ('admin', 'technician', 'coordinator', 'hod') %}
 <div class="head">
   <div><div class="crumbs"><a href="{{ url_for('tickets') }}">Tickets</a></div><h1>Raise a ticket</h1>
-    <div class="muted">Tell us what's wrong. A technician will be assigned and you can follow progress here.</div></div>
+    <div class="muted">Tell us what's wrong and where. You'll get a ticket number and can follow progress here instead of chasing in chat.</div></div>
 </div>
-<form method="post" enctype="multipart/form-data" class="card" style="max-width:760px">{{ csrf }}
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:820px" data-hd-form>{{ csrf }}
   <div class="form-grid">
-    <label class="full">What's the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. System not working, network weak, software not opening"></label>
-    <label>Type <select name="category">{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select></label>
+    <label>What do you need? <select name="request_type" data-hint="type">
+      {% for t, hint in [('Fault', 'something is broken or not working'), ('Service request', 'install, move, connect, set up'), ('New requirement', 'new equipment, goes to the procurement list'), ('Question', 'just need an answer')] %}
+      <option value="{{ t }}" {{ 'selected' if (preset.request_type or 'Fault') == t }}>{{ t }} · {{ hint }}</option>{% endfor %}</select></label>
+    <label>Kind of problem <select name="category" data-teams='{{ CATEGORY_TEAM|tojson }}'>{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select>
+      <span class="hint" data-team-hint></span></label>
+    <label class="full">What's the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. Wi-Fi not working, system not booting, printer not scanning"></label>
+
+    {{ location_picker(location_tree, preset) }}
+
     <label>How urgent? <select name="priority">
       {% for p, hint in [('Low', 'can wait a week'), ('Medium', 'fix in 3 days'), ('High', 'fix in 1 day'), ('Critical', 'class or exam blocked, fix in 4 h')] %}
       <option value="{{ p }}" {{ 'selected' if (preset.priority or 'Medium') == p }}>{{ p }} · {{ hint }}</option>{% endfor %}</select></label>
-    <label>Where? <input name="location" value="{{ preset.location or '' }}" placeholder="e.g. CSE Block, Computer Lab 2"></label>
-    <label>Asset tag (if known)
+    <label>Is something happening right now? <select name="urgent_reason" data-reasons='{{ URGENT_REASONS|tojson }}'>
+      <option value="">No</option>{% for r in URGENT_REASONS %}<option {{ 'selected' if preset.urgent_reason == r }}>{{ r }}</option>{% endfor %}</select>
+      <span class="hint" data-reason-hint>An exam, event or class in progress moves it up the queue.</span></label>
+
+    {% if rich %}
+    <label>Department <select name="department"><option value="">{{ user.department or 'Choose' }} (default)</option>
+      {% for d in departments %}<option {{ 'selected' if preset.department == d }}>{{ d }}</option>{% endfor %}</select></label>
+    <label>Reported by (if raising for someone else) <input name="requester_name" value="{{ preset.requester_name or '' }}" placeholder="Name of the faculty or staff member"></label>
+    {% endif %}
+    <label>Asset tag (if you know it)
       <input name="asset_tag" list="assets" value="{{ preset.asset_tag or '' }}" placeholder="{{ 'Type a tag or name' if assets else 'e.g. AMS-00013' }}" autocomplete="off">
       {% if assets %}<datalist id="assets">{% for a in assets %}<option value="{{ a.tag }}">{{ a.name }} · {{ a.building }} {{ a.room }}</option>{% endfor %}</datalist>{% endif %}</label>
-    <label class="full">Details <textarea name="description" placeholder="What happened? Any error message? Since when?">{{ preset.description or '' }}</textarea></label>
+    <label class="full">Details <textarea name="description" placeholder="What happened? Any error message? Since when? Which device?">{{ preset.description or '' }}</textarea></label>
     <label class="full">Photos (optional) <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label>
   </div>
   <div class="actions" style="margin-top:16px">
@@ -23,4 +39,5 @@
     <a class="btn ghost" href="{{ url_for('dashboard') }}">Cancel</a>
   </div>
 </form>
+<script src="{{ url_for('static', filename='helpdesk.js', v=static_v) }}" defer></script>
 {% endblock %}

@@ -1,0 +1,31 @@
+{% extends "base.html" %}{% from "_ui.html" import location_picker %}{% block title %}Log completed work{% endblock %}
+{% block body %}
+<div class="head">
+  <div><div class="crumbs"><a href="{{ url_for('tickets') }}">Tickets</a></div><h1>Log completed work</h1>
+    <div class="muted">Fixed something on the spot, or found it yourself? Record it here so it still counts in the history. It is saved as a closed ticket in your name.</div></div>
+</div>
+<form method="post" enctype="multipart/form-data" class="card" style="max-width:820px" data-hd-form>{{ csrf }}
+  <div class="form-grid">
+    <label class="full">What was the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. Wi-Fi not connecting, system not booting"></label>
+    <label>Kind of problem <select name="category" data-teams='{{ CATEGORY_TEAM|tojson }}'>{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select>
+      <span class="hint" data-team-hint></span></label>
+    <label>Request type <select name="request_type">{% for t in ['Fault', 'Service request'] %}<option {{ 'selected' if preset.request_type == t }}>{{ t }}</option>{% endfor %}</select></label>
+
+    {{ location_picker(location_tree, preset) }}
+
+    <label class="full">What was done? * <textarea name="resolution" required placeholder="e.g. Replaced the patch cable, reinstalled the driver">{{ preset.resolution or '' }}</textarea></label>
+    <label>Parts used <input name="parts_used" value="{{ preset.parts_used or '' }}" placeholder="e.g. 1 x 8 GB DDR4 RAM"></label>
+    <label>Reported by (name, if someone asked) <input name="requester_name" value="{{ preset.requester_name or '' }}"></label>
+    <label>Department <select name="department"><option value="">Not sure</option>
+      {% for d in departments %}<option {{ 'selected' if preset.department == d }}>{{ d }}</option>{% endfor %}</select></label>
+    <label>Asset tag (if known) <input name="asset_tag" list="assets" value="{{ preset.asset_tag or '' }}" autocomplete="off">
+      {% if assets %}<datalist id="assets">{% for a in assets %}<option value="{{ a.tag }}">{{ a.name }} · {{ a.building }} {{ a.room }}</option>{% endfor %}</datalist>{% endif %}</label>
+    <label class="full">Photos (optional) <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label>
+  </div>
+  <div class="actions" style="margin-top:16px">
+    <button class="btn">Save work log</button>
+    <a class="btn ghost" href="{{ url_for('dashboard') }}">Cancel</a>
+  </div>
+</form>
+<script src="{{ url_for('static', filename='helpdesk.js', v=static_v) }}" defer></script>
+{% endblock %}

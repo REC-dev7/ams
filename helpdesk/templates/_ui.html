@@ -1,5 +1,24 @@
 {% macro status(s) -%}
-<span class="chip {{ {'Open':'bad','In progress':'warn','Resolved':'good','Closed':''}.get(s, '') }}">{{ s }}</span>
+<span class="chip {{ {'Open':'bad','In progress':'warn','Waiting on requester':'warn','Resolved':'good','Closed':'','Planned':'plan'}.get(s, '') }}">{{ s }}</span>
+{%- endmacro %}
+
+{% macro tags(t) -%}
+{% if t.request_type and t.request_type != 'Fault' %}<span class="chip plain type">{{ t.request_type }}</span>{% endif %}
+{% if t.urgent_reason %}<span class="chip plain bad" title="Priority was raised because of this">&#9889; {{ t.urgent_reason }}</span>{% endif %}
+{% if t.repeat_n and t.repeat_n >= 2 %}<span class="chip plain warn" title="Same kind of problem from this place in the last 30 days">&#8635; {{ t.repeat_n }} in 30 days</span>{% endif %}
+{% if t.parent_id %}<span class="chip plain">part of HD-{{ '%04d'|format(t.parent_id) }}</span>{% endif %}
+{% if t.child_n %}<span class="chip plain warn">outage &middot; {{ t.child_n + 1 }} reports</span>{% endif %}
+{% if is_stale(t) %}<span class="chip plain bad" title="No update for {{ STALE_HOURS }}h or more">last update {{ ago(t.updated_at) }}</span>{% endif %}
+{%- endmacro %}
+
+{% macro steps(t) -%}
+{% set flow = ['Open', 'Planned', 'Closed'] if (t.status == 'Planned' or (t.request_type == 'New requirement' and t.status in ('Open', 'Closed'))) else ['Open', 'In progress', 'Resolved', 'Closed'] %}
+{% set cur = 'In progress' if t.status == 'Waiting on requester' else t.status %}
+{% set idx = flow|length if cur == 'Closed' else (flow.index(cur) if cur in flow else 0) %}
+<ol class="steps" aria-label="Progress">
+  {% for s in flow %}<li class="{{ 'done' if loop.index0 < idx else 'now' if loop.index0 == idx else '' }}"><span>{{ loop.index }}</span>{{ s }}
+    {% if s == cur and t.status == 'Waiting on requester' %}<em>waiting for requester</em>{% endif %}</li>{% endfor %}
+</ol>
 {%- endmacro %}
 
 {% macro priority(p) -%}
@@ -35,4 +54,20 @@
   <span class="n">{{ r.n }}</span>
 </div>
 {% else %}<p class="muted">No open tickets.</p>{% endfor %}
+{%- endmacro %}
+
+{% macro location_picker(tree, preset) -%}
+{% if tree %}
+<div class="full loc-picker" data-tree='{{ tree|tojson }}' data-selected="{{ preset.location_id or '' }}">
+  <span class="lbl">Where is it? *</span>
+  <div class="loc-row">
+    <select data-role="block" aria-label="Block"></select>
+    <select data-role="floor" aria-label="Floor"></select>
+    <select name="location_id" data-role="room" aria-label="Room"></select>
+  </div>
+  <input name="location" value="{{ preset.location or '' }}" placeholder="Not in the list? Type the place here instead" aria-label="Other place">
+</div>
+{% else %}
+<label class="full">Where is it? * <input name="location" value="{{ preset.location or '' }}" placeholder="e.g. B Block, 2nd floor, B206"></label>
+{% endif %}
 {%- endmacro %}

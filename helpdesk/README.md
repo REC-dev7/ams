@@ -14,8 +14,9 @@ python app.py --lan      # open to other campus PCs
 python app.py --debug    # auto-reload (local only)
 ```
 
-Demo logins (only with `--demo`): `admin` / `demo-admin-2026`, `tech` / `demo-tech-2026`,
-`staff` / `demo-staff-2026`. Login page also has one-click buttons.
+Demo logins (only with `--demo`): `<username>` / `demo-<username>-2026` for `admin`, `tech` (IT Network),
+`tech2` (IT Systems), `staff` (CSE), `staff2` (Mechanical), `coord`, `hod`, `auditor`. The login page has one-click buttons.
+An older database is upgraded in place when the app starts.
 
 ## AMS link
 
@@ -25,14 +26,30 @@ the tag is just text.
 
 ## Roles
 
-- **Admin**: everything, assign tickets, manage users
-- **Technician**: take or get assigned tickets, change priority, resolve, close
-- **Staff**: raise tickets, comment, confirm fixes or reopen their own
+- **Admin**: everything, manage users, places and departments, export CSV
+- **IT technician**: take or get assigned tickets, route to another team, ask the requester, resolve, link outages, log completed work, internal notes. Can have a team.
+- **Staff / faculty**: raise tickets and follow their own; confirm a fix or reopen
+- **Dept coordinator / HOD**: raise for the department, see and confirm the department's tickets (set their department)
+- **Auditor**: read only, can export CSV
+
+Permissions are checked on the server: someone who guesses a ticket or photo address still gets "Not found".
 
 ## Flow
 
-Open -> (assigned) In progress -> Resolved (technician writes the fix) -> Closed (raiser confirms).
-"Not fixed, reopen" sends it back to Open with a fresh fix-by time.
+Open -> In progress -> (Waiting on requester) -> Resolved -> Closed. Every change is saved in the ticket's status history.
+
+- **Waiting on requester**: IT asks a question; the fix-by clock pauses and restarts when the requester replies.
+- **Resolved**: the technician writes the fix (and parts used); the requester or their department confirms (Closed) or reopens.
+- **Planned**: a *New requirement* (new equipment) goes to the procurement list with a note instead of staying open. It has no deadline.
+- **Request types**: Fault, Service request, New requirement, Question.
+- **Teams**: the problem category decides the team (IT Network, IT Systems, Printers & AV, Electrical (EB), AC, Civil). Re-route a ticket posted in the wrong place.
+- **Urgent reason**: exam in progress, event running, class in session or management request raises the priority.
+- **Places**: Block, Floor, Room pickers fed from *Places & departments* (paste many at once). Anything else can still be typed.
+- **Repeat problems**: a ticket shows "3 in 30 days" when the same kind of problem keeps coming from one place.
+- **Outages**: link tickets reporting the same outage; resolve the main one and the rest follow.
+- **Quiet tickets**: open tickets with no update for 24 hours are flagged and listed.
+- **Log completed work**: technicians record walk-up or self-found fixes so they still count.
+- **Dashboard** (IT and auditor): last 30 days - first reply time, time to fix, % fixed in time, repeat places, open by team, active outages.
 
 ## Fix-by times (SLA)
 

@@ -2,14 +2,17 @@
 {% from "_ui.html" import pager %}
 {% block body %}
 <div class="head"><div><h1>Users</h1>
-  <div class="muted"><b>Admin</b>: everything, assign tickets, manage users · <b>Technician</b>: take, fix and resolve tickets · <b>Staff</b>: raise and track own tickets</div></div></div>
+  <div class="muted"><b>Admin</b>: everything, manage users and places · <b>IT technician</b>: assign, fix and resolve tickets (set a team) · <b>Staff</b>: raise and track own tickets ·
+    <b>Dept coordinator / HOD</b>: raise for the department and see its tickets (set a department) · <b>Auditor</b>: read only</div></div></div>
 
 <div class="card" style="margin-bottom:16px">
   <h2>Add user</h2>
   <form method="post" action="{{ url_for('user_add') }}" class="filters" style="margin:0">{{ csrf }}
     <input name="name" placeholder="Full name" required>
     <input name="username" placeholder="Username" required autocomplete="off">
-    <select name="role">{% for r in ROLES %}<option {{ 'selected' if r == 'staff' }}>{{ r }}</option>{% endfor %}</select>
+    <select name="role" aria-label="Role">{% for r in ROLES %}<option value="{{ r }}" {{ 'selected' if r == 'staff' }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select>
+    <select name="department" aria-label="Department"><option value="">No department</option>{% for d in departments %}<option>{{ d }}</option>{% endfor %}</select>
+    <select name="team" aria-label="Team (technicians)"><option value="">No team</option>{% for t in TEAMS %}<option>{{ t }}</option>{% endfor %}</select>
     <input name="password" type="password" placeholder="Password (8+)" minlength="8" required autocomplete="new-password">
     <button class="btn">Add user</button>
   </form>
@@ -18,13 +21,15 @@
 <form class="filters"><input type="search" name="q" value="{{ request.args.q }}" aria-label="Search users" placeholder="Search name or username…"><button class="btn">Search</button></form>
 
 <div class="card flush"><div class="table-wrap"><table>
-  <thead><tr><th>Name</th><th>Username</th><th>Role / reset password</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Username</th><th>Role, department, team, new password</th><th></th></tr></thead>
   <tbody>
   {% for u in rows %}
     <tr><td><b>{{ u.name }}</b>{% if u.id == user.id %} <span class="muted">(you)</span>{% endif %}</td><td class="mono">{{ u.username }}</td>
       <td><form method="post" action="{{ url_for('user_update', uid=u.id) }}" class="actions">{{ csrf }}
-        <select name="role" style="width:auto" {{ 'disabled' if u.id == user.id }}>{% for r in ROLES %}<option {{ 'selected' if u.role == r }}>{{ r }}</option>{% endfor %}</select>
-        <input name="password" type="password" placeholder="New password" minlength="8" style="width:160px" autocomplete="new-password">
+        <select name="role" aria-label="Role" style="width:auto" {{ 'disabled' if u.id == user.id }}>{% for r in ROLES %}<option value="{{ r }}" {{ 'selected' if u.role == r }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select>
+        <select name="department" aria-label="Department" style="width:auto"><option value="">No department</option>{% for d in departments %}<option {{ 'selected' if u.department == d }}>{{ d }}</option>{% endfor %}</select>
+        <select name="team" aria-label="Team" style="width:auto"><option value="">No team</option>{% for t in TEAMS %}<option {{ 'selected' if u.team == t }}>{{ t }}</option>{% endfor %}</select>
+        <input name="password" type="password" placeholder="New password" minlength="8" style="width:150px" autocomplete="new-password">
         <button class="btn sm ghost">Save</button></form></td>
       <td>{% if u.id != user.id %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }}?')">{{ csrf }}<button class="btn danger sm">Delete</button></form>{% endif %}</td></tr>
   {% endfor %}

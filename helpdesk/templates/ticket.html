@@ -1,32 +1,52 @@
-{% extends "base.html" %}{% from "_ui.html" import status, priority, due %}
-{% from "_ui.html" import gallery %}
+{% extends "base.html" %}{% from "_ui.html" import status, priority, due, gallery, tags, steps %}
 {% block title %}HD-{{ '%04d'|format(t.id) }} {{ t.title }}{% endblock %}
 {% block body %}
-{% set is_staff_side = can('admin', 'technician') %}
-{% set mine_ticket = t.raised_by == user.id %}
+{% set is_it = can('admin', 'technician') %}
+{% set live = t.status in ('Open', 'In progress', 'Waiting on requester') %}
+{% set ask = namespace(text='') %}
+{% for c in comments|reverse %}{% if not ask.text and c.body.startswith('Waiting on requester:') %}{% set ask.text = c.body[21:] %}{% endif %}{% endfor %}
 <div class="head">
   <div>
     <div class="crumbs"><a href="{{ url_for('tickets') }}">Tickets</a> / <span class="mono">HD-{{ '%04d'|format(t.id) }}</span></div>
     <h1>{{ t.title }} {{ status(t.status) }}</h1>
-    <div class="muted">{{ t.category }} · raised by {{ t.raiser or '—' }} on {{ t.created_at[:16] }}</div>
+    <div class="tags">{{ tags(t) }}</div>
+    <div class="muted">{{ t.request_type }} · {{ t.category }} · {{ t.team }} · raised by {{ t.requester_name or t.raiser or '—' }}{% if t.requester_name and t.raiser %} (entered by {{ t.raiser }}){% endif %} on {{ t.created_at[:16] }}{% if t.source != 'Web' %} · {{ t.source }}{% endif %}</div>
   </div>
   <div class="actions">
-    {% if t.status == 'Resolved' and (mine_ticket or is_staff_side) %}
+    {% if t.status == 'Resolved' and can_confirm %}
     <form method="post" action="{{ url_for('ticket_close', tid=t.id) }}">{{ csrf }}<button class="btn">Confirm fixed</button></form>
     {% endif %}
-    {% if t.status in ('Resolved', 'Closed') and (mine_ticket or is_staff_side) %}
+    {% if t.status == 'Planned' and is_it %}
+    <form method="post" action="{{ url_for('ticket_close', tid=t.id) }}">{{ csrf }}<button class="btn">Mark done / delivered</button></form>
+    {% endif %}
+    {% if t.status in ('Resolved', 'Closed') and can_confirm %}
     <form method="post" action="{{ url_for('ticket_reopen', tid=t.id) }}">{{ csrf }}<button class="btn ghost">Not fixed, reopen</button></form>
     {% endif %}
   </div>
 </div>
 
+{{ steps(t) }}
+
+{% if t.status == 'Waiting on requester' %}
+<div class="banner warn"><b>{{ 'Waiting for the requester.' if is_it else 'IT needs an answer from you.' }}</b>
+  {% if ask.text %}<div>{{ ask.text }}</div>{% endif %}
+  <div class="muted">{{ 'The fix-by clock is paused until they reply.' if is_it else 'Reply in the updates box below. The fix-by clock restarts when you do.' }}</div></div>
+{% elif t.status == 'Resolved' and can_confirm %}
+<div class="banner good"><b>Marked fixed.</b> Please check and press <b>Confirm fixed</b>, or <b>Not fixed, reopen</b> if the problem is still there.</div>
+{% elif t.status == 'Planned' %}
+<div class="banner"><b>On the procurement list.</b> It has been acknowledged and will be considered in a future purchase.</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:16px">
   <div class="facts">
     <div><span>Priority</span><b>{{ priority(t.priority) }}</b></div>
     <div><span>Technician</span><b>{{ t.assignee or 'Not assigned yet' }}</b></div>
-    <div><span>Fix by</span><b>{{ t.due_at[:16] }}</b>{% if t.status in ('Open', 'In progress') %} {{ due(t) }}{% endif %}</div>
+    <div><span>Fix by</span><b>{{ t.due_at[:16] if t.due_at else 'No deadline' }}</b>{% if live %} {{ due(t) }}{% endif %}</div>
+    <div><span>First reply from IT</span><b>{{ t.first_response_at[:16] if t.first_response_at else ('Not yet' if live else '—') }}</b></div>
     <div><span>Where</span><b>{{ t.location or '—' }}</b></div>
+    <div><span>Department</span><b>{{ t.department or '—' }}</b></div>
     {% if t.resolved_at %}<div><span>Fixed on</span><b>{{ t.resolved_at[:16] }}</b></div>{% endif %}
+    {% if t.parts_used %}<div><span>Parts used</span><b>{{ t.parts_used }}</b></div>{% endif %}
   </div>
   {% if t.description %}<p style="margin:14px 0 0;white-space:pre-line">{{ t.description }}</p>{% endif %}
   {% if t.resolution %}<p style="margin:14px 0 0"><b>Fix:</b> {{ t.resolution }}</p>{% endif %}
@@ -51,29 +71,81 @@
 </div>
 {% endif %}
 
-{% if is_staff_side and t.status in ('Open', 'In progress') %}
+{% if t.parent_id or t.child_n or (is_it and similar) %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Same outage</h2>
+  {% if parent %}
+  <p style="margin:0 0 8px">Part of <a href="{{ url_for('ticket', tid=parent.id) }}"><b>HD-{{ '%04d'|format(parent.id) }} {{ parent.title }}</b></a> {{ status(parent.status) }}</p>
+  {% if is_it %}<form method="post" action="{{ url_for('ticket_unlink', tid=t.id) }}">{{ csrf }}<button class="btn sm ghost">Not the same problem, unlink</button></form>{% endif %}
+  {% endif %}
+  {% if children %}
+  <p class="muted" style="margin:0 0 6px">Also reported by:</p>
+  <ul class="plain">{% for k in children %}<li><a href="{{ url_for('ticket', tid=k.id) }}"><span class="mono">HD-{{ '%04d'|format(k.id) }}</span> {{ k.title }}</a> {{ status(k.status) }}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if is_it and similar %}
+  <p style="margin:12px 0 6px"><b>Possibly the same problem</b> <span class="muted">(same team, same block, within a few hours)</span></p>
+  <ul class="plain">{% for k in similar %}<li>
+    <form method="post" action="{{ url_for('ticket_link', tid=k.id) }}" class="actions">{{ csrf }}<input type="hidden" name="parent" value="{{ t.id }}">
+      <a href="{{ url_for('ticket', tid=k.id) }}"><span class="mono">HD-{{ '%04d'|format(k.id) }}</span> {{ k.title }}</a> <span class="muted">{{ k.location }}</span>
+      <button class="btn sm ghost">Link to this</button></form></li>{% endfor %}</ul>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if is_it and (live or t.status == 'Planned') %}
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card">
-    <h2>Assign</h2>
+    <h2>Work on it</h2>
     <form method="post" action="{{ url_for('ticket_assign', tid=t.id) }}" class="actions">{{ csrf }}
       <select name="assigned_to" aria-label="Technician" style="width:auto;min-width:160px">
-        {% for x in techs %}<option value="{{ x.id }}" {{ 'selected' if x.id == t.assigned_to }}>{{ x.name }}</option>{% endfor %}</select>
+        {% for x in techs %}<option value="{{ x.id }}" {{ 'selected' if x.id == t.assigned_to }}>{{ x.name }}{% if x.team %} · {{ x.team }}{% endif %}</option>{% endfor %}</select>
       <button class="btn ghost">Assign</button>
       {% if t.assigned_to != user.id %}<button class="btn" name="take" value="1">Take it myself</button>{% endif %}
     </form>
+    <form method="post" action="{{ url_for('ticket_team', tid=t.id) }}" class="actions" style="margin-top:12px">{{ csrf }}
+      <select name="team" aria-label="Team" style="width:auto">{% for x in TEAMS %}<option {{ 'selected' if x == t.team }}>{{ x }}</option>{% endfor %}</select>
+      <button class="btn sm ghost">Send to this team</button>
+      <span class="muted" style="font-size:12px">wrong group? re-route it</span>
+    </form>
+    {% if live %}
     <form method="post" action="{{ url_for('ticket_priority', tid=t.id) }}" class="actions" style="margin-top:12px">{{ csrf }}
       <select name="priority" aria-label="Priority" style="width:auto">{% for p in PRIORITIES %}<option {{ 'selected' if p == t.priority }}>{{ p }}</option>{% endfor %}</select>
       <button class="btn sm ghost">Change priority</button>
       <span class="muted" style="font-size:12px">resets the fix-by time</span>
     </form>
+    {% endif %}
+    <div class="divider"></div>
+    {% if t.status != 'In progress' %}
+    <form method="post" action="{{ url_for('ticket_status', tid=t.id) }}" class="actions">{{ csrf }}<input type="hidden" name="to" value="In progress">
+      <button class="btn sm">{{ 'Start work' if t.status != 'Waiting on requester' else 'Requester answered, continue' }}</button></form>
+    {% endif %}
+    {% if t.status in ('Open', 'In progress') %}
+    <form method="post" action="{{ url_for('ticket_status', tid=t.id) }}" class="actions" style="margin-top:8px">{{ csrf }}<input type="hidden" name="to" value="Waiting on requester">
+      <input name="reason" required placeholder="What do you need from them?" aria-label="What do you need from the requester" style="flex:1;min-width:180px">
+      <button class="btn sm ghost">Waiting on requester</button></form>
+    {% endif %}
+    {% if live %}
+    <form method="post" action="{{ url_for('ticket_status', tid=t.id) }}" class="actions" style="margin-top:8px">{{ csrf }}<input type="hidden" name="to" value="Planned">
+      <input name="reason" required placeholder="Note for the procurement list" aria-label="Note for the procurement list" style="flex:1;min-width:180px">
+      <button class="btn sm ghost">Add to procurement list</button></form>
+    {% endif %}
+    {% if not t.parent_id and not t.child_n and live %}
+    <form method="post" action="{{ url_for('ticket_link', tid=t.id) }}" class="actions" style="margin-top:8px">{{ csrf }}
+      <input name="parent" required placeholder="HD number of the main outage ticket" aria-label="Main outage ticket number" style="flex:1;min-width:180px">
+      <button class="btn sm ghost">Link</button></form>
+    {% endif %}
   </div>
+  {% if live %}
   <div class="card">
     <h2>Resolve</h2>
     <form method="post" action="{{ url_for('ticket_resolve', tid=t.id) }}" class="stack">{{ csrf }}
       <textarea name="resolution" required aria-label="What was done" placeholder="What was done to fix it? e.g. replaced power cable, reinstalled driver"></textarea>
+      <input name="parts_used" aria-label="Parts used" placeholder="Parts used (optional), e.g. 1 x 8 GB RAM">
+      {% if t.child_n %}<label class="check"><input type="checkbox" name="also_linked" value="1" checked> Also resolve the {{ t.child_n }} linked ticket{{ 's' if t.child_n > 1 }}</label>{% endif %}
       <div><button class="btn">Mark resolved</button></div>
     </form>
   </div>
+  {% endif %}
 </div>
 {% endif %}
 
@@ -81,14 +153,29 @@
   <h2>Updates</h2>
   <ul class="timeline">
     {% for c in comments %}
-    <li>{% if c.system %}<span class="muted">{{ c.body }}</span>{% else %}<b>{{ c.who or 'Someone' }}:</b> {{ c.body }}{% endif %}
+    <li class="{{ 'internal' if c.internal }}">{% if c.internal %}<span class="chip plain">internal note</span> {% endif %}
+      {% if c.system %}<span class="muted">{{ c.body }}</span>{% else %}<b>{{ c.who or 'Someone' }}:</b> {{ c.body }}{% endif %}
       <div class="when">{{ c.at[:16] }}{% if c.system and c.who %} · {{ c.who }}{% endif %}</div></li>
     {% endfor %}
   </ul>
-  <form method="post" action="{{ url_for('ticket_comment', tid=t.id) }}" enctype="multipart/form-data" class="actions" id="end" style="margin-top:12px">{{ csrf }}
-    <input name="body" aria-label="Add an update" placeholder="Add a comment or update…" style="flex:1;min-width:200px">
-    <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple aria-label="Photos">
-    <button class="btn">Post</button>
+  {% if user.role != 'auditor' %}
+  <form method="post" action="{{ url_for('ticket_comment', tid=t.id) }}" enctype="multipart/form-data" class="stack" id="end" style="margin-top:12px" data-hd-form>{{ csrf }}
+    <textarea name="body" rows="2" aria-label="Add an update" placeholder="{{ 'Answer IT here…' if t.status == 'Waiting on requester' and not is_it else 'Add a comment or update…' }}"></textarea>
+    {% if is_it %}
+    <div class="canned" aria-label="Quick replies">{% for r in ['Please try now and confirm.', 'Technician will visit today.', 'Can you share the room number and device name?', 'Fixed. Please confirm the issue is gone.', 'Added to our procurement list.'] %}<button type="button" class="btn sm ghost" data-canned="{{ r }}">{{ r[:28] }}{{ '…' if r|length > 28 }}</button>{% endfor %}</div>
+    {% endif %}
+    <div class="actions">
+      <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple aria-label="Photos">
+      {% if is_it %}<label class="check"><input type="checkbox" name="internal" value="1"> Internal note (IT only)</label>{% endif %}
+      <button class="btn">Post</button>
+    </div>
   </form>
+  {% endif %}
+  {% if history|length > 1 %}
+  <details style="margin-top:14px"><summary class="muted" style="cursor:pointer">Status history ({{ history|length }})</summary>
+    <ul class="plain" style="margin-top:8px">{% for h in history %}<li class="muted" style="font-size:13px">{{ h.at[:16] }} · {{ h.from_status or 'new' }} → <b>{{ h.to_status }}</b>{% if h.who %} · {{ h.who }}{% endif %}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
 </div>
+<script src="{{ url_for('static', filename='helpdesk.js', v=static_v) }}" defer></script>
 {% endblock %}

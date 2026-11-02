@@ -1,0 +1,50 @@
+{% extends "base.html" %}{% block title %}Places &amp; departments{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Places &amp; departments</h1>
+  <div class="muted">These feed the Block, Floor and Room pickers on the ticket form, so everyone writes places the same way.</div></div></div>
+
+<div class="grid g2" style="margin-bottom:16px">
+  <div class="card">
+    <h2>Add one place</h2>
+    <form method="post" action="{{ url_for('location_add') }}" class="filters" style="margin:0">{{ csrf }}
+      <input name="block" placeholder="Block, e.g. B Block" required list="blocks">
+      <input name="floor" placeholder="Floor, e.g. 2nd floor" required>
+      <input name="room" placeholder="Room, e.g. B206 Microcontroller lab" required>
+      <button class="btn">Add</button>
+    </form>
+    <datalist id="blocks">{% for b in locations|map(attribute='block')|unique %}<option value="{{ b }}">{% endfor %}</datalist>
+  </div>
+  <div class="card">
+    <h2>Paste many</h2>
+    <form method="post" action="{{ url_for('location_add') }}" class="stack">{{ csrf }}
+      <textarea name="bulk" rows="4" placeholder="One per line: Block, Floor, Room&#10;B Block, 2nd floor, B205 Microprocessor lab&#10;B Block, 2nd floor, B206 Microcontroller lab" aria-label="Places, one per line"></textarea>
+      <div><button class="btn">Add all</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="grid g3">
+  <div class="card flush">
+    <h2>Places <span class="muted">({{ locations|length }})</span></h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Block</th><th>Floor</th><th>Room</th><th class="num">Tickets</th><th></th></tr></thead>
+      <tbody>{% for l in locations %}
+        <tr><td>{{ l.block }}</td><td>{{ l.floor }}</td><td>{{ l.room }}</td><td class="num">{{ l.used }}</td>
+          <td>{% if not l.used %}<form method="post" action="{{ url_for('location_delete', lid=l.id) }}">{{ csrf }}<button class="btn danger sm">Delete</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="empty">No places yet. People can still type the place by hand.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card flush">
+    <h2>Departments <span class="muted">({{ departments|length }})</span></h2>
+    <form method="post" action="{{ url_for('department_add') }}" class="filters" style="margin:12px 18px">{{ csrf }}
+      <input name="name" placeholder="New department" required><button class="btn sm">Add</button></form>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Name</th><th class="num">Tickets</th><th></th></tr></thead>
+      <tbody>{% for d in departments %}
+        <tr><td>{{ d.name }}</td><td class="num">{{ d.used }}</td>
+          <td>{% if not d.used %}<form method="post" action="{{ url_for('department_delete', did=d.id) }}">{{ csrf }}<button class="btn danger sm">Delete</button></form>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+</div>
+{% endblock %}

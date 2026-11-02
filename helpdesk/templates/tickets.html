@@ -1,22 +1,31 @@
-{% extends "base.html" %}{% from "_ui.html" import status, priority, due %}
-{% from "_ui.html" import pager %}
+{% extends "base.html" %}{% from "_ui.html" import status, priority, due, pager, tags %}
 {% block title %}Tickets{% endblock %}
 {% block body %}
 {% set a = request.args %}
 <div class="head">
   <div><h1>Tickets</h1><div class="muted">{{ pg.total }} tickets</div></div>
-  <a class="btn" href="{{ url_for('ticket_new') }}">+ Raise a ticket</a>
+  <div class="actions">
+    {% if user.role in ('admin', 'auditor') %}<a class="btn ghost" href="{{ url_for('tickets', **dict(a, export='csv')) }}">Export CSV</a>{% endif %}
+    {% if user.role != 'auditor' %}<a class="btn" href="{{ url_for('ticket_new') }}">+ Raise a ticket</a>{% endif %}
+  </div>
 </div>
 
 <form class="filters">
-  <input type="search" name="q" value="{{ a.q }}" aria-label="Search tickets" placeholder="Search problem, place, asset tag…">
+  <input type="search" name="q" value="{{ a.q }}" aria-label="Search tickets" placeholder="Search problem, place, asset tag, HD number…">
   <select name="scope" aria-label="Show">
-    {% for v, l in [('open', 'Open'), ('closed', 'Fixed'), ('all', 'All')] %}<option value="{{ v }}" {{ 'selected' if scope == v }}>{{ l }}</option>{% endfor %}</select>
+    {% for v, l in [('open', 'Open'), ('planned', 'Procurement list'), ('closed', 'Fixed'), ('all', 'All')] %}<option value="{{ v }}" {{ 'selected' if scope == v }}>{{ l }}</option>{% endfor %}</select>
+  <select name="team" aria-label="Team"><option value="">All teams</option>{% for c in TEAMS %}<option {{ 'selected' if a.team == c }}>{{ c }}</option>{% endfor %}</select>
   <select name="category" aria-label="Category"><option value="">All categories</option>{% for c in CATEGORIES %}<option {{ 'selected' if a.category == c }}>{{ c }}</option>{% endfor %}</select>
+  <select name="type" aria-label="Request type"><option value="">All request types</option>{% for c in REQUEST_TYPES %}<option {{ 'selected' if a.type == c }}>{{ c }}</option>{% endfor %}</select>
   <select name="priority" aria-label="Priority"><option value="">All priorities</option>{% for p in PRIORITIES %}<option {{ 'selected' if a.priority == p }}>{{ p }}</option>{% endfor %}</select>
+  {% if user.role in ('admin', 'technician', 'auditor') %}
+  <select name="department" aria-label="Department"><option value="">All departments</option>{% for d in departments %}<option {{ 'selected' if a.department == d }}>{{ d }}</option>{% endfor %}</select>
+  {% endif %}
   <label class="check"><input type="checkbox" name="mine" value="1" {{ 'checked' if a.mine }}> Mine</label>
+  {% if user.team %}<label class="check"><input type="checkbox" name="myteam" value="1" {{ 'checked' if a.myteam }}> My team</label>{% endif %}
   <label class="check"><input type="checkbox" name="unassigned" value="1" {{ 'checked' if a.unassigned }}> Unassigned</label>
   <label class="check"><input type="checkbox" name="overdue" value="1" {{ 'checked' if a.overdue }}> Overdue</label>
+  <label class="check"><input type="checkbox" name="stale" value="1" {{ 'checked' if a.stale }}> No update {{ STALE_HOURS }}h</label>
   <button class="btn">Filter</button>
   {% if a %}<a class="btn ghost" href="{{ url_for('tickets') }}">Clear</a>{% endif %}
 </form>
@@ -28,8 +37,11 @@
     <tr>
       <td><a class="mono" href="{{ url_for('ticket', tid=t.id) }}">HD-{{ '%04d'|format(t.id) }}</a></td>
       <td>{{ priority(t.priority) }}</td>
-      <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a><div class="muted" style="font-size:12px">{{ t.category }} · by {{ t.raiser or '—' }}</div></td>
-      <td>{{ t.location or '—' }}{% if t.asset_tag %}<div class="mono muted" style="font-size:12px">{{ t.asset_tag }}</div>{% endif %}</td>
+      <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a>
+        <div class="muted" style="font-size:12px">{{ t.category }} · {{ t.team }} · by {{ t.requester_name or t.raiser or '—' }}</div>
+        <div class="tags">{{ tags(t) }}</div></td>
+      <td>{{ t.location or '—' }}{% if t.department %}<div class="muted" style="font-size:12px">{{ t.department }}</div>{% endif %}
+        {% if t.asset_tag %}<div class="mono muted" style="font-size:12px">{{ t.asset_tag }}</div>{% endif %}</td>
       <td>{{ status(t.status) }}</td>
       <td>{{ t.assignee or '—' }}</td>
       <td>{{ due(t) }}</td>

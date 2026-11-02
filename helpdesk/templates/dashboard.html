@@ -1,48 +1,106 @@
-{% extends "base.html" %}{% from "_ui.html" import status, priority, due, bar_list %}
+{% extends "base.html" %}{% from "_ui.html" import status, priority, due, bar_list, tags %}
 {% block title %}Dashboard{% endblock %}
-{% macro row(t) %}
+{% macro row(t, hint='') %}
 <tr>
   <td>{{ priority(t.priority) }}</td>
   <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a>
-    <div class="muted" style="font-size:12px"><span class="mono">HD-{{ '%04d'|format(t.id) }}</span> · {{ t.category }}{% if t.location %} · {{ t.location }}{% endif %}</div></td>
-  <td>{{ status(t.status) }}</td>
+    <div class="muted" style="font-size:12px"><span class="mono">HD-{{ '%04d'|format(t.id) }}</span> · {{ t.category }}{% if t.location %} · {{ t.location }}{% endif %}</div>
+    <div class="tags">{{ tags(t) }}</div></td>
+  <td>{{ status(t.status) }}{% if hint %}<div style="font-size:12px;font-weight:600">{{ hint }}</div>{% endif %}</td>
   <td>{{ t.assignee or '—' }}</td>
   <td>{{ due(t) }}</td>
 </tr>
 {% endmacro %}
+{% macro table(rows, empty='Nothing here.') %}
+<div class="table-wrap"><table>
+  <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
+  <tbody>{% for t in rows %}{{ row(t) }}{% else %}<tr><td colspan="5" class="empty">{{ empty }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% endmacro %}
 {% block body %}
+{% set team = can('admin', 'technician') %}
 <div class="head">
-  <div><h1>Dashboard</h1><div class="muted">Problems with campus computers, network and electronics</div></div>
-  <a class="btn" href="{{ url_for('ticket_new') }}">+ Raise a ticket</a>
+  <div><h1>Dashboard</h1><div class="muted">Problems with campus computers, network and electronics{% if user.role in ('hod', 'coordinator') %} · {{ user.department }}{% endif %}</div></div>
+  <div class="actions">
+    {% if team %}<a class="btn ghost" href="{{ url_for('ticket_log') }}">Log completed work</a>{% endif %}
+    {% if user.role != 'auditor' %}<a class="btn" href="{{ url_for('ticket_new') }}">+ Raise a ticket</a>{% endif %}
+  </div>
 </div>
 
 <div class="kpis">
   <a class="kpi" href="{{ url_for('tickets') }}"><div class="label">Open tickets</div><div class="value">{{ stats.open }}</div><div class="sub">waiting or being fixed</div></a>
   <a class="kpi {{ 'alert' if stats.overdue }}" href="{{ url_for('tickets', overdue=1) }}"><div class="label">Overdue</div><div class="value">{{ stats.overdue }}</div><div class="sub">past their fix-by time</div></a>
+  <a class="kpi {{ 'alert' if stats.stale }}" href="{{ url_for('tickets', stale=1) }}"><div class="label">No update {{ STALE_HOURS }}h</div><div class="value">{{ stats.stale }}</div><div class="sub">going quiet, chase these</div></a>
   <a class="kpi {{ 'caution' if stats.unassigned }}" href="{{ url_for('tickets', unassigned=1) }}"><div class="label">Unassigned</div><div class="value">{{ stats.unassigned }}</div><div class="sub">no technician yet</div></a>
   <a class="kpi {{ 'alert' if stats.urgent }}" href="{{ url_for('tickets', priority='Critical') }}"><div class="label">High / critical</div><div class="value">{{ stats.urgent }}</div><div class="sub">fix first</div></a>
-  <a class="kpi" href="{{ url_for('tickets', scope='closed') }}"><div class="label">Fixed this week</div><div class="value">{{ stats.resolved_week }}</div>
-    <div class="sub">{% if stats.avg_fix is not none %}avg {{ stats.avg_fix }} h to fix{% else %}no fixes yet{% endif %}</div></a>
+  <a class="kpi" href="{{ url_for('tickets', scope='closed') }}"><div class="label">Fixed this week</div><div class="value">{{ stats.resolved_week }}</div><div class="sub">{{ stats.planned }} on procurement list</div></a>
 </div>
+
+{% if needs_you %}
+<div class="card flush" style="margin-bottom:16px;border-left:4px solid var(--bad)">
+  <h2>Waiting for you <span class="muted">({{ needs_you|length }})</span></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
+    <tbody>{% for t in needs_you %}{{ row(t, 'Reply needed: IT asked you a question' if t.status == 'Waiting on requester' else 'Fixed? Please confirm or reopen') }}{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
 
 {% if mine %}
 <div class="card flush" style="margin-bottom:16px;border-left:4px solid var(--gold)">
-  <h2>{{ 'Your open tickets' if user.role == 'staff' else 'Assigned to you' }} <span class="muted">({{ mine|length }})</span></h2>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
-    <tbody>{% for t in mine %}{{ row(t) }}{% endfor %}</tbody>
-  </table></div>
+  <h2>{{ 'Assigned to you' if team else 'Your open tickets' }} <span class="muted">({{ mine|length }})</span></h2>
+  {{ table(mine) }}
+</div>
+{% endif %}
+
+{% if team_q %}
+<div class="card flush" style="margin-bottom:16px">
+  <h2>Unassigned in your team: {{ user.team }} <span class="muted">({{ team_q|length }})</span></h2>
+  {{ table(team_q) }}
+</div>
+{% endif %}
+
+{% if stale %}
+<div class="card flush" style="margin-bottom:16px;border-left:4px solid var(--bad)">
+  <h2>No update for {{ STALE_HOURS }}h or more <a href="{{ url_for('tickets', stale=1) }}" style="font-weight:500;font-size:13px;margin-left:6px">view all</a></h2>
+  {{ table(stale) }}
 </div>
 {% endif %}
 
 <div class="grid g3">
   <div class="card flush">
     <h2>Fix next <a href="{{ url_for('tickets') }}" style="font-weight:500;font-size:13px;margin-left:6px">view all</a></h2>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
-      <tbody>{% for t in work %}{{ row(t) }}{% else %}<tr><td colspan="5" class="empty">No open tickets 🎉</td></tr>{% endfor %}</tbody>
-    </table></div>
+    {{ table(work, 'No open tickets') }}
   </div>
   <div class="card"><h2>Open by category</h2>{{ bar_list(by_cat) }}</div>
 </div>
+
+{% if insights %}
+<h2 style="margin:24px 0 10px">Last 30 days</h2>
+<div class="kpis">
+  <div class="kpi"><div class="label">Raised</div><div class="value">{{ insights.raised }}</div><div class="sub">{{ insights.fixed }} fixed</div></div>
+  <div class="kpi"><div class="label">First reply</div><div class="value">{{ insights.response if insights.response is not none else '—' }}{% if insights.response is not none %}<small> h</small>{% endif %}</div><div class="sub">average time to first IT reply</div></div>
+  <div class="kpi"><div class="label">Time to fix</div><div class="value">{{ insights.fix if insights.fix is not none else '—' }}{% if insights.fix is not none %}<small> h</small>{% endif %}</div><div class="sub">average, raised to resolved</div></div>
+  <div class="kpi {{ 'alert' if insights.sla is not none and insights.sla < 70 }}"><div class="label">Fixed in time</div><div class="value">{{ insights.sla if insights.sla is not none else '—' }}{% if insights.sla is not none %}<small>%</small>{% endif %}</div><div class="sub">met their fix-by time</div></div>
+</div>
+<div class="grid g3">
+  <div class="card flush">
+    <h2>Places with repeat problems</h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Place</th><th>Kind</th><th class="num">Tickets</th></tr></thead>
+      <tbody>{% for p in insights.places %}<tr><td><a href="{{ url_for('tickets', scope='all', q=p.location) }}">{{ p.location }}</a></td><td>{{ p.category }}</td><td class="num"><b>{{ p.n }}</b></td></tr>
+      {% else %}<tr><td colspan="3" class="empty">No repeats yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card"><h2>Open by team</h2>{% for r in insights.teams %}
+    <div class="bar-row"><span class="name">{{ r.k }}</span><div class="bar-track"><div class="bar-fill" style="width: {{ (r.n * 100 / (insights.teams[0].n or 1))|round|int }}%"></div></div><span class="n">{{ r.n }}</span></div>
+    {% else %}<p class="muted">No open tickets.</p>{% endfor %}</div>
+  <div class="card flush">
+    <h2>Active outages</h2>
+    {% for t in insights.outages %}<div style="padding:10px 18px;border-top:1px solid var(--border)"><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a>
+      <div class="muted" style="font-size:12px"><span class="mono">HD-{{ '%04d'|format(t.id) }}</span> · {{ t.child_n + 1 }} reports · {{ t.location }}</div></div>
+    {% else %}<p class="muted" style="padding:0 18px 16px">None right now.</p>{% endfor %}
+  </div>
+</div>
+{% endif %}
 {% endblock %}
