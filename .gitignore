@@ -6,3 +6,5 @@ __pycache__/
 # superseded v1
 old/
 uploads/
+
+backups/

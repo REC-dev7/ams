@@ -1,5 +1,6 @@
 """Smoke test: python test_app.py"""
 import io
+import json
 import os
 import re
 import sqlite3
@@ -602,6 +603,59 @@ def test_specs_stock_licences_reports():
     assert full >= 1
 
 
+def test_backup_and_restore():
+    import backup
+    import zipfile
+    m.DB = os.path.join(tempfile.mkdtemp(), "b.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+    pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF"
+    cse = asset_id("L1-PC-01")
+    c.post(f"/assets/{cse}/documents", data={"csrf": csrf(c, f"/assets/{cse}"), "file": (io.BytesIO(pdf), "po.pdf"), "kind": "Purchase order"}, content_type="multipart/form-data")
+    png = bytes.fromhex("89504e470d0a1a0a") + b"0" * 20
+    c.post(f"/assets/{cse}/photos", data={"csrf": csrf(c, f"/assets/{cse}"), "photos": (io.BytesIO(png), "a.png")}, content_type="multipart/form-data")
+    out = tempfile.mkdtemp()
+    z = backup.make_backup(m.DB, m.UPLOADS, out)
+    ok, problems, summary = backup.verify_backup(z)
+    assert ok, problems
+    assert summary["assets"] == row("SELECT COUNT(*) n FROM assets")["n"] and summary["files"] == 2
+    # a damaged backup is caught
+    bad = os.path.join(out, "bad.zip")
+    with zipfile.ZipFile(z) as zin, zipfile.ZipFile(bad, "w") as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            zout.writestr(item.filename, data[:-3] + b"xyz" if item.filename.startswith("uploads/docs/") else data)
+    ok, problems, _ = backup.verify_backup(bad)
+    assert not ok and any("damaged" in p for p in problems)
+    # a file the database points at but the backup lacks is reported
+    gone = os.path.join(out, "gone.zip")
+    with zipfile.ZipFile(z) as zin, zipfile.ZipFile(gone, "w") as zout:
+        man = json.loads(zin.read("manifest.json"))
+        for k in [k for k in man["files"] if k.startswith("uploads/docs/")]:
+            del man["files"][k]
+        for item in zin.infolist():
+            if item.filename == "manifest.json":
+                zout.writestr(item.filename, json.dumps(man))
+            elif not item.filename.startswith("uploads/docs/"):
+                zout.writestr(item.filename, zin.read(item.filename))
+    ok, problems, _ = backup.verify_backup(gone)
+    assert not ok and any("not in the backup" in p for p in problems)
+    # restore into a spare folder; the restored database and files work; an existing database is never overwritten
+    spare = os.path.join(tempfile.mkdtemp(), "spare")
+    target = backup.restore_backup(z, spare)
+    con = sqlite3.connect(target)
+    assert con.execute("SELECT COUNT(*) FROM assets").fetchone()[0] == row("SELECT COUNT(*) n FROM assets")["n"]
+    assert len(os.listdir(os.path.join(spare, "uploads", "docs"))) == 1
+    try:
+        backup.restore_backup(z, spare)
+        raise AssertionError("should refuse to overwrite")
+    except FileExistsError:
+        pass
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -609,4 +663,5 @@ if __name__ == "__main__":
     test_import_wizard()
     test_documents()
     test_specs_stock_licences_reports()
+    test_backup_and_restore()
     print("ok")
