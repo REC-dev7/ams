@@ -14,6 +14,12 @@
 <span class="chip plain {{ {'Verified':'good','Not found':'bad','Wrong location':'warn','Unresolved':'warn'}.get(s, '') }}">{{ s }}</span>
 {%- endmacro %}
 
+{% macro wizard_steps(n) -%}
+<ol class="steps" aria-label="Steps">
+  {% for label in ['Choose file', 'Match columns', 'Review values', 'Check and approve'] %}<li class="{{ 'done' if loop.index < n else 'now' if loop.index == n else '' }}"><span>{{ loop.index }}</span>{{ label }}</li>{% endfor %}
+</ol>
+{%- endmacro %}
+
 {% macro priority(p) -%}
 <span class="chip plain {{ {'High':'bad','Medium':'warn'}.get(p, '') }}">{{ p }}</span>
 {%- endmacro %}

@@ -1,0 +1,15 @@
+,Category,Sub Category,Product,Product Code,Asset ID,Asset,Asset Code,Allotted to Department,Member Registration Id,Allotted to Member,Allotted By,Allotment Date,Infrastructure Type,Infrastructure Name,Allotment Type,Allotment Status,Return Date,Action Date,Action Taken By,Allotment Description,Return Description
+1,A/V Equipments,Cut Section Petrol Engine Working Model,Cut Section Petrol Engine Working Model,PRD001,304,Cut Section Petrol Engine Working Model,REC / MECH/T.E.LAB L 1/P 07,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Thermal Lab 1,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+2,A/V Equipments,Hydraulic Trainer Kit,Hydraulic Trainer Kit,PRD002,389,Hydraulic Trainer Kit,REC / MECH/MECHATRONICS LAB / P 05,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Mechatronics Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+3,Bulk Assets (BA),Fire Extinguisher,Fire Extinguisher,PRD003,346,Fire Extinguisher,FE1,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Dynamics Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+4,Bulk Assets (BA),Printers (PRT),Printers (PRT),PRD004,451,Printers (PRT),REC/CAD/MECH/PRINT/01,Department of Mechanical Engineering,-,Dr. A. Kumar,Store Keeper,11-Sep-26,Lab,Mechanical CAD Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+5,Electrical Fittings(EF),Projectors (PRO),Projectors (PRO),PRD005,453,Projectors (PRO),REC/CAD/MECH/PROJ/02,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Mechanical CAD Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+6,Bulk Assets (BA),Tube Lights (TL),Tube lights(TL),PRD006,568,Tube lights(TL) 1,REC/MECH/FM/L-3/TL-1,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Fluid Mechanics Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+7,Bulk Assets (BA),Tube Lights (TL),Tube lights(TL),PRD006,569,Tube lights(TL) 2,REC/MECH/FM/L-3/TL-2,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Fluid Mechanics Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+8,AMC,Annual contract,Annual maintenance contract,PRD007,900,Lift AMC,-,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,-,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+9,Bulk Assets (BA),Printers (PRT),Printers (PRT),PRD004,451,Printers (PRT) again,REC/CAD/MECH/PRINT/01,Department of Mechanical Engineering,-,-,Store Keeper,11-Sep-26,Lab,Mechanical CAD Lab,confirmed,ALLOTED,-No Value-,11-Sep-26,-,-,-
+,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,

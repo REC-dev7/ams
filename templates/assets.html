@@ -7,7 +7,7 @@
   <div><h1>Assets</h1><div class="muted">{{ pg.total }} assets</div></div>
   <div class="actions">
     <a class="btn ghost" href="{{ url_for('assets', **dict(a, export='csv')) }}">Export CSV</a>
-    {% if can('admin') %}<a class="btn ghost" href="{{ url_for('asset_import') }}">Import CSV</a>{% endif %}
+    {% if can('admin') %}<a class="btn ghost" href="{{ url_for('import_new') }}">Import from file</a>{% endif %}
     {% if can('edit') %}<a class="btn" href="{{ url_for('asset_new') }}">+ Add asset</a>{% endif %}
   </div>
 </div>

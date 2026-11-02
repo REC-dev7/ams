@@ -95,18 +95,6 @@ def test_flow():
     assert [p["name"] for p in row_all("SELECT name FROM assets WHERE parent_id=?", pc2)] == ["Test RAM"]
     assert len({t["tag"] for t in row_all("SELECT tag FROM assets")}) == row("SELECT COUNT(*) n FROM assets")["n"]
 
-    # CSV import: template imports cleanly; a bad file saves nothing
-    tpl = c.get("/assets/import?template=1").data
-    r = c.post("/assets/import", data={"csrf": csrf(c, "/assets/import"), "file": (io.BytesIO(tpl), "t.csv")})
-    assert r.status_code == 302, r.data
-    part = row("SELECT p.tag FROM assets a JOIN assets p ON p.id=a.parent_id WHERE a.name='8 GB RAM' AND p.tag='CSE-L3-001'")
-    assert part and row("SELECT 1 FROM rooms WHERE name='Computer Lab 3'")
-    assert row("SELECT lifecycle_stage, managing_dept_id FROM assets WHERE tag='CSE-L3-001'")["managing_dept_id"] == int(dept("CSE"))
-    before = row("SELECT COUNT(*) n FROM assets")["n"]
-    bad = b"name,building,room,cost\nGood PC,CSE Block,Lab X,100\nBad PC,CSE Block,Lab X,abc\n"
-    r = c.post("/assets/import", data={"csrf": csrf(c, "/assets/import"), "file": (io.BytesIO(bad), "b.csv")})
-    assert b"Row 3" in r.data and row("SELECT COUNT(*) n FROM assets")["n"] == before
-
     # depreciation
     half = (date.today() - timedelta(days=round(365.25 * 2.5))).isoformat()
     assert abs(m.book_value(1000, half, 5) - 500) < 1 and m.book_value(1000, None, 5) == 1000 and m.book_value(1000, "2000-01-01", 5) == 0
@@ -301,8 +289,168 @@ def test_old_database_upgrades():
         c.execute("INSERT INTO users(username, name, password_hash, role) VALUES ('h', 'H', 'x', 'hod')")  # the new roles are allowed now
 
 
+def upload(c, name, data):
+    r = c.post("/imports/new", data={"csrf": csrf(c, "/imports/new"), "file": (io.BytesIO(data), name)}, content_type="multipart/form-data")
+    return r, int(re.search(r"/imports/(\d+)/map", r.location).group(1)) if r.status_code == 302 else None
+
+
+def guessed(page):
+    out = {}
+    for i, blk in re.findall(r'<select name="col_(\d+)"[^>]*>(.*?)</select>', page, re.S):
+        sel = re.search(r'<option value="(\w+)" selected', blk)
+        out[int(i)] = sel.group(1) if sel else "ignore"
+    return out
+
+
+def map_step(c, bid, **kw):
+    page = c.get(f"/imports/{bid}/map").get_data(as_text=True)
+    cols = {f"col_{i}": t for i, t in guessed(page).items()}
+    form = {"header_row": re.search(r'name="header_row"[^>]*value="(\d+)"', page).group(1), "source_system": "College ERP", "acquisition_basis": "Opening stock (old record)",
+            "cost_basis": "Per unit", "default_stage": "In stock", "create_rooms": "1", "department_id": "", "building_id": "", **cols, **kw}
+    return post(c, f"/imports/{bid}/map", form, f"/imports/{bid}/map")
+
+
+def test_import_wizard():
+    m.DB = os.path.join(tempfile.mkdtemp(), "w.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    here = os.path.dirname(os.path.abspath(__file__))
+    login(c, "staff")
+    assert c.get("/imports").status_code == 403 and c.get("/imports/new").status_code == 403
+    login(c, "admin")
+    data = open(os.path.join(here, "samples", "allotment_sample.csv"), "rb").read()
+    assert b"Only .csv and .xlsx" in upload(c, "x.xls", b"abc")[0].data
+    assert b"real Excel" in upload(c, "x.xlsx", b"abc")[0].data
+
+    # 1. upload keeps the original; the columns of the college's allotment report are recognised
+    r, bid = upload(c, "allotment.csv", data)
+    b = row("SELECT * FROM import_batches WHERE id=?", bid)
+    stored = os.path.join(m.UPLOADS, "imports", b["stored_file"])
+    assert b["sha256"] and open(stored, "rb").read() == data
+    g = guessed(c.get(f"/imports/{bid}/map").get_data(as_text=True))
+    assert {"name", "legacy_code", "department", "room", "allot_status"} <= set(g.values())
+
+    # 2. unknown categories and departments need a decision once
+    r = map_step(c, bid, save_mapping="ERP allotment report")
+    assert r.location.endswith(f"/imports/{bid}/values")
+    vals = c.get(r.location).get_data(as_text=True)
+    assert "AMC" in vals and "Department of Mechanical Engineering" in vals and "ALLOTED" not in vals  # ALLOTED is understood
+    todo = re.findall(r'name="v_(\d+)" aria-label="What ([^"]+) is"', vals)
+    answers = {f"v_{i}": ("__skip__" if v == "AMC" else "Mechanical" if v.startswith("Department of") else "__new__") for i, v in todo}
+    r = post(c, f"/imports/{bid}/values", answers, f"/imports/{bid}/values")
+    assert r.location.endswith(f"/imports/{bid}/preview")
+
+    # 3. preview: nothing added yet; placeholders are blanks; a code repeated inside the file is not added twice
+    pv = c.get(f"/imports/{bid}/preview").get_data(as_text=True)
+    assert "Rows read" in pv and "Repeated inside this file" in pv and "-No Value-" not in pv
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND decision='Create'", bid)["n"] == 7
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=?", bid)["n"] == 9  # the 5 blank lines are ignored
+    assert row("SELECT COUNT(*) n FROM assets WHERE import_batch_id=?", bid)["n"] == 0
+    post(c, f"/imports/{bid}/approve", {}, f"/imports/{bid}/preview")  # must tick the review box
+    assert row("SELECT COUNT(*) n FROM assets WHERE import_batch_id=?", bid)["n"] == 0
+    post(c, f"/imports/{bid}/approve", {"reviewed": "1"}, f"/imports/{bid}/preview")
+    made = row_all("SELECT * FROM assets WHERE import_batch_id=? ORDER BY id", bid)
+    assert len(made) == 7 and len({a["tag"] for a in made}) == 7 and all(a["tag"].startswith("AMS-") for a in made)
+    a1 = made[0]
+    assert (a1["lifecycle_stage"], a1["legacy_code"], a1["acquisition_basis"], a1["managing_dept_id"]) == ("Deployed", "REC / MECH/T.E.LAB L 1/P 07", "Opening stock (old record)", int(dept("Mechanical")))
+    assert row("SELECT value FROM asset_ids WHERE asset_id=? AND kind='external' AND source='College ERP'", a1["id"])["value"] == "304"
+    cu = row("SELECT * FROM custody WHERE asset_id=? AND ended_at IS NULL", a1["id"])
+    assert cu["holder_type"] == "Department" and cu["started_on"] == "2026-09-11" and row("SELECT source_json FROM assets WHERE id=?", a1["id"])["source_json"]
+    assert row("SELECT person FROM custody WHERE asset_id=? AND ended_at IS NULL", made[3]["id"])["person"] == "Dr. A. Kumar"
+    assert row("SELECT 1 FROM rooms WHERE name='Thermal Lab 1'") and row("SELECT 1 FROM categories WHERE name='A/V Equipments'")
+    assert f"/assets/{a1['id']}".encode() in c.get("/assets?q=T.E.LAB").data  # found by the old code
+    assert row("SELECT status FROM import_batches WHERE id=?", bid)["status"] == "Approved"
+    assert c.get(f"/imports/{bid}/errors.csv").data.startswith(b"row,decision,problems")
+
+    # 4. the same file again: noticed, answers remembered, everything is a duplicate so nothing doubles
+    r, bid2 = upload(c, "allotment-again.csv", data)
+    assert b"already uploaded" in c.get(r.location, follow_redirects=True).data
+    r = map_step(c, bid2)
+    assert r.location.endswith("/preview"), r.location
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND decision='Create'", bid2)["n"] == 0
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND dup_asset_id IS NOT NULL", bid2)["n"] == 8
+    post(c, f"/imports/{bid2}/approve", {"reviewed": "1"}, f"/imports/{bid2}/preview")
+    assert row("SELECT COUNT(*) n FROM assets WHERE legacy_code='REC / MECH/T.E.LAB L 1/P 07'")["n"] == 1
+
+    # 5. a duplicate can fill the blanks of the existing asset, never overwriting what is there
+    with m.app.app_context():
+        m.db().execute("UPDATE assets SET brand=NULL WHERE id=?", (a1["id"],))
+        m.db().commit()
+    r, bid3 = upload(c, "with-brand.csv", b"Asset,Asset Code,Make,Category,Department\nOther name,REC / MECH/T.E.LAB L 1/P 07,Kirloskar,A/V Equipments,Mechanical\n")
+    map_step(c, bid3)
+    sid = row("SELECT id FROM staged_rows WHERE batch_id=?", bid3)["id"]
+    post(c, f"/imports/{bid3}/preview", {f"d_{sid}": "Update"}, f"/imports/{bid3}/preview")
+    post(c, f"/imports/{bid3}/approve", {"reviewed": "1"}, f"/imports/{bid3}/preview")
+    after = row("SELECT name, brand FROM assets WHERE id=?", a1["id"])
+    assert after["brand"] == "Kirloskar" and after["name"] == a1["name"]  # blank filled, existing name kept
+
+    # 6. "20 computers" stays a batch; a day/month date is flagged; a total line is skipped; confirming units gives tags and per-unit cost
+    r, bid4 = upload(c, "purchases.csv", open(os.path.join(here, "samples", "purchase_batches_sample.csv"), "rb").read())
+    map_step(c, bid4)
+    pv = c.get(f"/imports/{bid4}/preview").get_data(as_text=True)
+    assert "read as day/month/year" in pv and "Looks like a total line" in pv
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND kind='Batch' AND decision='Create'", bid4)["n"] == 2
+    assert row("SELECT COUNT(*) n FROM assets WHERE import_batch_id=?", bid4)["n"] == 0
+    post(c, f"/imports/{bid4}/approve", {"reviewed": "1"}, f"/imports/{bid4}/preview")
+    pb = row("SELECT * FROM purchase_batches WHERE quantity=20")
+    assert pb["unit_cost"] == 52000 and pb["units_created"] == 0 and pb["cost_basis"] == "Per unit"
+    assert b"Confirm units" in c.get("/batches").data
+    assert b"1 to 20" in c.get(post(c, f"/batches/{pb['id']}/units", {"count": "25", "department_id": dept("CSE")}, "/batches").location, follow_redirects=True).data
+    post(c, f"/batches/{pb['id']}/units", {"count": "12", "department_id": dept("CSE"), "room_id": "1"}, "/batches")
+    units = row_all("SELECT * FROM assets WHERE notes=?", f"Created from purchase batch #{pb['id']}")
+    assert len(units) == 12 and len({u["tag"] for u in units}) == 12 and units[0]["cost"] == 52000 and units[0]["cost_basis"] == "Per unit"
+    assert row("SELECT status FROM purchase_batches WHERE id=?", pb["id"])["status"] == "Partly received"
+    post(c, f"/batches/{pb['id']}/units", {"count": "8", "department_id": dept("CSE"), "room_id": "1"}, "/batches")
+    assert row("SELECT status FROM purchase_batches WHERE id=?", pb["id"])["status"] == "Units created"
+
+    # 7. a whole-purchase cost is never copied onto each asset
+    r, bid5 = upload(c, "whole.csv", b"Asset,Cost,Department,Room\nProjector A,500000,CSE,Lab Z\nProjector B,500000,CSE,Lab Z\n")
+    map_step(c, bid5, cost_basis="Whole purchase")
+    post(c, f"/imports/{bid5}/approve", {"reviewed": "1"}, f"/imports/{bid5}/preview")
+    got = row_all("SELECT cost FROM assets WHERE import_batch_id=?", bid5)
+    assert len(got) == 2 and all(a["cost"] is None for a in got)
+
+    # 8. Excel: title rows above the headings, a spare sheet, real dates, a total line
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Allotments"
+    ws.append(["Mechanical Dept stock list"])
+    ws.append([])
+    ws.append(["Item", "Code", "Dept", "Room", "Cost", "Purchased"])
+    ws.append(["Lathe", "OLD-LATHE-1", "Mechanical", "Workshop", 250000, date(2024, 5, 1)])
+    ws.append(["Total", None, None, None, 250000, None])
+    wb.create_sheet("Notes").append(["not data"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    r, bid6 = upload(c, "stock.xlsx", buf.getvalue())
+    assert row("SELECT header_row FROM import_batches WHERE id=?", bid6)["header_row"] == 3 and b"Allotments" in c.get(r.location).data
+    r = map_step(c, bid6)
+    assert r.status_code == 302
+    pv = c.get(f"/imports/{bid6}/preview").get_data(as_text=True)
+    assert "Lathe" in pv and "Looks like a total line" in pv
+    map_step(c, bid6, expected_rows="2", expected_cost="999")  # the preview compares with what staff expected
+    assert "differs" in c.get(f"/imports/{bid6}/preview").get_data(as_text=True)
+
+    # 9. reversal works only while the imported assets are untouched; a corrected file can then be imported again
+    post(c, f"/imports/{bid5}/reverse", {}, f"/imports/{bid5}/preview")
+    assert row("SELECT COUNT(*) n FROM assets WHERE import_batch_id=? AND archived_at IS NULL", bid5)["n"] == 0
+    assert row("SELECT status FROM import_batches WHERE id=?", bid5)["status"] == "Reversed"
+    busy = made[1]["id"]
+    cur = row("SELECT id FROM custody WHERE asset_id=? AND ended_at IS NULL", busy)["id"]
+    post(c, f"/assets/{busy}/custody", {"to": "Stockroom", "reason": "Lab closed", "expected": str(cur)}, f"/assets/{busy}")
+    assert b"Can&#39;t reverse" in c.get(post(c, f"/imports/{bid}/reverse", {}, f"/imports/{bid}/preview").location, follow_redirects=True).data
+    assert row("SELECT status FROM import_batches WHERE id=?", bid)["status"] == "Approved"
+    r, bid7 = upload(c, "whole-again.csv", b"Asset,Cost,Department,Room\nProjector A,500000,CSE,Lab Z\n")
+    map_step(c, bid7, cost_basis="Per unit")
+    assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND decision='Create'", bid7)["n"] == 1
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
     test_old_database_upgrades()
+    test_import_wizard()
     print("ok")

@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% block title %}Purchase batches{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Purchase batches</h1>
+  <div class="muted">A row like "20 computers" is a purchase, not 20 identified machines. Confirm units here as they arrive and pass inspection. Each unit then gets its own tag and its share of the cost.</div></div>
+  <a class="btn ghost" href="{{ url_for('imports') }}">Imports</a></div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>What</th><th>Department</th><th class="num">Quantity</th><th class="num">Cost</th><th>References</th><th>Units</th></tr></thead>
+  <tbody>
+  {% for p in rows %}
+    <tr><td>{{ p.id }}</td><td><b>{{ p.description }}</b><div class="muted" style="font-size:12px">{{ p.cat or 'no category' }}{% if p.vendor %} · {{ p.vendor }}{% endif %}</div></td>
+      <td>{{ p.dept or '—' }}</td><td class="num">{{ p.quantity }}</td>
+      <td class="num">{% if p.unit_cost is not none %}₹{{ '{:,.0f}'.format(p.unit_cost) }} each{% elif p.total_cost is not none %}₹{{ '{:,.0f}'.format(p.total_cost) }} total{% else %}—{% endif %}
+        <div class="muted" style="font-size:12px">{{ p.cost_basis or '' }}</div></td>
+      <td class="mono" style="font-size:12px">{{ p.po_number or '' }} {{ p.invoice_number or '' }}</td>
+      <td>{{ p.units_created }} of {{ p.quantity }} confirmed
+        {% if p.units_created < p.quantity and can('admin') %}
+        <details class="drop"><summary class="btn sm ghost" style="margin-top:6px">Confirm units</summary>
+          <form method="post" action="{{ url_for('batch_units', pid=p.id) }}" class="filters" style="margin:8px 0 0">{{ csrf }}
+            <input type="number" name="count" min="1" max="{{ p.quantity - p.units_created }}" value="{{ p.quantity - p.units_created }}" aria-label="How many arrived" style="width:90px">
+            {% if not p.department_id %}<select name="department_id" aria-label="Department" required><option value="">Department…</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>{% endif %}
+            <select name="room_id" aria-label="Room"><option value="">Room not known yet</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.building }} · {{ r.name }}</option>{% endfor %}</select>
+            <button class="btn sm">Create tagged units</button></form></details>
+        {% endif %}</td></tr>
+  {% else %}<tr><td colspan="7" class="empty">No purchase batches. They appear when an import row says "10 computers" without serial numbers or codes.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

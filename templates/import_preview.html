@@ -1,0 +1,75 @@
+{% extends "base.html" %}{% from "_ui.html" import wizard_steps, pager %}{% block title %}Import #{{ b.id }}{% endblock %}
+{% block body %}
+{% set done = b.status in ('Approved', 'Reversed') %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('imports') }}">Imports</a> / #{{ b.id }}</div><h1>{{ 'Import result' if done else 'Check before it is added' }}</h1>
+  <div class="muted"><b>{{ b.filename }}</b> · {{ b.status }}{% if b.approved_at %} on {{ b.approved_at[:16] }}{% endif %}{% if not done %} · step 4 of 4{% endif %}</div></div>
+  <div class="actions">
+    <a class="btn ghost" href="{{ url_for('import_errors', bid=b.id) }}">Download rows to review (CSV)</a>
+    <a class="btn ghost" href="{{ url_for('import_original', bid=b.id) }}">Original file</a>
+    {% if not done %}<a class="btn ghost" href="{{ url_for('import_map', bid=b.id) }}">Change the mapping</a>{% endif %}
+  </div>
+</div>
+{% if not done %}{{ wizard_steps(4) }}{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><div class="label">Rows read</div><div class="value">{{ s.read }}</div><div class="sub">empty lines ignored</div></div>
+  <div class="kpi"><div class="label">Assets to add</div><div class="value">{{ s.create_assets }}</div><div class="sub">each gets its own permanent tag</div></div>
+  <div class="kpi {{ 'caution' if s.create_batches }}"><div class="label">Purchase batches</div><div class="value">{{ s.create_batches }}</div><div class="sub">{{ s.batch_units }} units not yet confirmed</div></div>
+  <div class="kpi {{ 'caution' if s.dups }}"><div class="label">Already in the register</div><div class="value">{{ s.dups }}</div><div class="sub">skipped unless you choose Update</div></div>
+  <div class="kpi {{ 'alert' if s.errors }}"><div class="label">Rows with errors</div><div class="value">{{ s.errors }}</div><div class="sub">left out</div></div>
+  <div class="kpi"><div class="label">Skipped</div><div class="value">{{ s.skip }}</div><div class="sub">{{ s.update }} to update</div></div>
+</div>
+
+{% if checks %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Does it match what you expected?</h2>
+  {% for label, want, got in checks %}<p style="margin:4px 0"><span class="chip plain {{ 'good' if (got - want)|abs < 0.5 else 'bad' }}">{{ 'matches' if (got - want)|abs < 0.5 else 'differs' }}</span> {{ label }}: expected <b>{{ '{:,.0f}'.format(want) }}</b>, found <b>{{ '{:,.0f}'.format(got) }}</b></p>{% endfor %}
+</div>
+{% endif %}
+
+<form class="filters"><select name="view" aria-label="Show"><option value="all" {{ 'selected' if view == 'all' }}>All rows</option>
+  <option value="create" {{ 'selected' if view == 'create' }}>To be added</option><option value="skip" {{ 'selected' if view == 'skip' }}>Skipped</option>
+  <option value="errors" {{ 'selected' if view == 'errors' }}>With errors</option><option value="dups" {{ 'selected' if view == 'dups' }}>Already in register</option>
+  <option value="warn" {{ 'selected' if view == 'warn' }}>With warnings</option></select><button class="btn ghost">Show</button></form>
+
+<form method="post" class="card flush">{{ csrf }}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Row</th><th>What will happen</th><th>Asset</th><th>Where / who</th><th>Notes for you</th></tr></thead>
+    <tbody>
+    {% for x in rows %}{% set r = x.r %}{% set d = x.d %}
+      <tr>
+        <td class="num">{{ r.row_no }}</td>
+        <td>{% if done or x.errors %}<span class="chip {{ 'good' if r.decision == 'Create' else 'bad' if x.errors else '' }}">{{ 'Error' if x.errors else ('Added' if r.decision == 'Create' and done else r.decision) }}</span>
+          {% else %}<select name="d_{{ r.id }}" aria-label="Row {{ r.row_no }}"><option value="Create" {{ 'selected' if r.decision == 'Create' }}>{{ 'Add batch' if r.kind == 'Batch' else 'Add asset' }}</option>
+            {% if x.dup %}<option value="Update" {{ 'selected' if r.decision == 'Update' }}>Fill blanks of {{ x.dup.tag }}</option>{% endif %}
+            <option value="Skip" {{ 'selected' if r.decision == 'Skip' }}>Skip</option></select>{% endif %}
+          {% if r.kind == 'Batch' %}<div class="muted" style="font-size:12px">purchase batch of {{ d.quantity }}</div>{% endif %}</td>
+        <td><b>{{ d.name or '—' }}</b><div class="muted" style="font-size:12px">{{ d.category or 'no category' }}{% if d.legacy_code %} · old code {{ d.legacy_code }}{% endif %}{% if d.cost is not none and d.cost %} · ₹{{ '{:,.0f}'.format(d.cost) }}{% endif %}</div></td>
+        <td>{{ d.department or '—' }}{% if d.room %}<div class="muted" style="font-size:12px">{{ d.room }}</div>{% endif %}{% if d.custodian %}<div class="muted" style="font-size:12px">with {{ d.custodian }}</div>{% endif %}
+          <div class="muted" style="font-size:12px">{{ d.stage }} · {{ d.condition }}</div></td>
+        <td style="font-size:13px">{% for e in x.errors %}<div><span class="chip plain bad">error</span> {{ e }}</div>{% endfor %}{% for w in x.warnings %}<div class="muted">{{ w }}</div>{% endfor %}
+          {% if x.dup %}<div><a href="{{ url_for('asset', aid=x.dup.id) }}">{{ x.dup.tag }} {{ x.dup.name }}</a></div>{% endif %}</td>
+      </tr>
+    {% else %}<tr><td colspan="5" class="empty">Nothing to show.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  {% if not done %}<div class="actions" style="padding:12px 18px"><button class="btn ghost">Save my choices on this page</button></div>{% endif %}
+</form>
+{{ pager(pg) }}
+
+{% if not done %}
+<form method="post" action="{{ url_for('import_approve', bid=b.id) }}" class="card" style="margin-top:16px">{{ csrf }}
+  <h2>Approve</h2>
+  <p>This adds <b>{{ s.create_assets }}</b> asset(s) with new permanent tags, <b>{{ s.create_batches }}</b> purchase batch(es) and updates <b>{{ s.update }}</b>. The {{ s.skip }} skipped and {{ s.errors }} error row(s) are not added; download them above to fix and upload again.</p>
+  <label class="check"><input type="checkbox" name="reviewed" value="1"> I have reviewed the skipped rows, errors and warnings.</label>
+  <div class="actions" style="margin-top:12px"><button class="btn">Add to the register</button></div>
+</form>
+{% elif b.status == 'Approved' %}
+<div class="card" style="margin-top:16px">
+  <h2>After the import</h2>
+  <p>{{ created }} asset(s) were created from this file. <a href="{{ url_for('assets', q='') }}">See the register</a>{% if s.create_batches %} · <a href="{{ url_for('batches') }}">Confirm purchase batches</a>{% endif %}.</p>
+  <form method="post" action="{{ url_for('import_reverse', bid=b.id) }}" onsubmit="return confirm('Archive everything this import added? Only works while none of it has been used.')">{{ csrf }}
+    <button class="btn danger sm">Reverse this import</button> <span class="muted" style="font-size:12px">Only possible while the imported assets have no later activity.</span></form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_ui.html" import wizard_steps %}{% block title %}New import{% endblock %}
+{% block body %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('imports') }}">Imports</a></div><h1>New import</h1>
+  <div class="muted">Step 1 of 4: choose the file. Nothing is added to the register yet.</div></div></div>
+{{ wizard_steps(1) }}
+<form method="post" enctype="multipart/form-data" class="card stack" style="max-width:720px">{{ csrf }}
+  <label>File (.csv or .xlsx) <input type="file" name="file" accept=".csv,.xlsx" required></label>
+  <ul class="plain muted" style="font-size:13px">
+    <li>Your original file is kept unchanged, with a fingerprint so a repeat upload is noticed.</li>
+    <li>Next you choose the sheet and heading row and match columns. Old headings, totals lines and placeholders like <b>-No Value-</b> are handled in the preview.</li>
+    <li>A row saying "20 computers" stays a <b>purchase batch</b> until you confirm the real units. It does not become 20 made-up assets.</li>
+  </ul>
+  <div class="actions"><button class="btn">Upload and continue</button>
+    <a class="btn ghost" href="{{ url_for('asset_import', template=1) }}">Download our CSV format</a></div>
+</form>
+{% endblock %}

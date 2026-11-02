@@ -1,0 +1,28 @@
+{% extends "base.html" %}{% from "_ui.html" import wizard_steps %}{% block title %}Review values{% endblock %}
+{% block body %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('imports') }}">Imports</a> / #{{ b.id }}</div><h1>Review the new values</h1>
+  <div class="muted">Step 3 of 4: these spellings aren't in your lists yet. Say what each one is once, and it is remembered for next time.</div></div></div>
+{{ wizard_steps(3) }}
+<form method="post" class="card flush">{{ csrf }}
+  <div class="table-wrap"><table>
+    <thead><tr><th>In the file</th><th>Rows</th><th>It is</th></tr></thead>
+    <tbody>
+    {% for t in todo %}{% set i = loop.index0 %}
+      <tr><td><span class="chip plain">{{ t.kind }}</span> <b>{{ t.value }}</b></td><td class="num">{{ t.count }}</td>
+        <td><select name="v_{{ i }}" aria-label="What {{ t.value }} is">
+          <option value="">Choose…</option>
+          {% if t.kind == 'status' %}
+            {% for s in STATUS_CHOICES %}<option value="{{ s }}">{{ s.replace('|', ' · ') }}</option>{% endfor %}
+          {% else %}
+            {% if t.suggestion %}<option value="{{ t.suggestion }}" selected>{{ t.suggestion }} (closest match)</option>{% endif %}
+            {% for n in (categories if t.kind == 'category' else departments) %}{% if n.name != t.suggestion %}<option value="{{ n.name }}">{{ n.name }}</option>{% endif %}{% endfor %}
+            <option value="__new__">Add "{{ t.value }}" as a new {{ t.kind }}</option>
+          {% endif %}
+          <option value="__skip__">Skip these rows (not equipment)</option>
+        </select></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="actions" style="padding:16px 18px"><button class="btn">Save and see the preview</button></div>
+</form>
+{% endblock %}

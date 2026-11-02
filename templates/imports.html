@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}Imports{% endblock %}
+{% block body %}
+<div class="head">
+  <div><h1>Imports</h1><div class="muted">Bring in old registers (CSV or Excel). Each file is kept as uploaded, checked in a preview, and only added after you approve it.</div></div>
+  <div class="actions"><a class="btn ghost" href="{{ url_for('batches') }}">Purchase batches</a><a class="btn" href="{{ url_for('import_new') }}">+ New import</a></div>
+</div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>File</th><th>Uploaded</th><th>Status</th><th class="num">Rows</th><th class="num">Added</th><th class="num">Skipped</th><th class="num">Problems</th><th></th></tr></thead>
+  <tbody>
+  {% for i in rows %}
+    <tr><td>{{ i.id }}</td><td><b>{{ i.filename }}</b><div class="muted mono" style="font-size:11px">{{ i.sha256[:12] }}</div></td>
+      <td>{{ i.uploaded_at[:16] }}<div class="muted" style="font-size:12px">{{ i.by_name or '' }}</div></td>
+      <td><span class="chip {{ {'Approved':'good','Reversed':'bad','Previewed':'warn'}.get(i.status, '') }}">{{ i.status }}</span></td>
+      <td class="num">{{ i.total_rows if i.total_rows is not none else '—' }}</td><td class="num">{{ i.created_n if i.created_n is not none else '—' }}</td>
+      <td class="num">{{ i.skipped_n if i.skipped_n is not none else '—' }}</td><td class="num">{{ i.error_n if i.error_n is not none else '—' }}</td>
+      <td><a class="btn sm ghost" href="{{ url_for('import_preview', bid=i.id) }}">Open</a></td></tr>
+  {% else %}<tr><td colspan="9" class="empty">No imports yet.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

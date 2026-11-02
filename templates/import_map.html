@@ -1,0 +1,53 @@
+{% extends "base.html" %}{% from "_ui.html" import wizard_steps %}{% block title %}Match columns{% endblock %}
+{% block body %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('imports') }}">Imports</a> / #{{ b.id }}</div><h1>Match the columns</h1>
+  <div class="muted"><b>{{ b.filename }}</b> · step 2 of 4: tell us what each column means. Nothing is added yet.</div></div></div>
+{{ wizard_steps(2) }}
+<form method="post" class="stack">{{ csrf }}
+  <div class="card">
+    <h2>Which part of the file</h2>
+    <div class="filters" style="margin:0">
+      {% if sheets|length > 1 %}<label>Sheet <select name="sheet">{% for s in sheets %}<option {{ 'selected' if s == b.sheet }}>{{ s }}</option>{% endfor %}</select></label>{% endif %}
+      <label>Heading row number <input type="number" name="header_row" min="1" max="50" value="{{ b.header_row }}" style="width:90px"></label>
+      <button class="btn ghost" name="action" value="reload">Show this part</button>
+    </div>
+    <div class="table-wrap" style="margin-top:10px"><table>
+      <tbody>{% for r in raw_head %}<tr class="{{ 'hl' if loop.index == hrow }}"><td class="num muted">{{ loop.index }}</td>{% for c in r[:10] %}<td>{{ c[:30] }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+    </table></div>
+    <p class="muted" style="font-size:12px;margin:6px 0 0">The highlighted row is used as the headings. Rows above it (titles, notes) are ignored.</p>
+  </div>
+
+  <div class="card flush">
+    <h2>What each column is</h2>
+    {% if known_map %}<p class="muted" style="padding:0 18px">A saved mapping, <b>{{ known_map.name }}</b>, fits this layout and is preselected.</p>{% endif %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Column in the file</th><th>Examples</th><th>It is the…</th></tr></thead>
+      <tbody>{% for h in headers %}{% set i = loop.index0 %}
+        <tr><td><b>{{ h }}</b></td>
+          <td class="muted" style="font-size:12px">{% for r in preview[:3] %}{{ r[i][:28] if i < r|length else '' }}{{ ' · ' if not loop.last }}{% endfor %}</td>
+          <td><select name="col_{{ i }}" aria-label="Meaning of {{ h }}">{% for key, label in targets %}<option value="{{ key }}" {{ 'selected' if current.get(h) == key }}>{{ label }}</option>{% endfor %}</select></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </div>
+
+  <div class="card">
+    <h2>About this file</h2>
+    <div class="form-grid">
+      <label>Where did it come from? <input name="source_system" value="{{ cfg.source_system or '' }}" placeholder="e.g. College ERP fixed asset report">
+        <span class="hint">Kept with old codes and IDs so they can be traced.</span></label>
+      <label>Department for rows that have none <select name="department_id"><option value="">None</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if cfg.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></label>
+      <label>Building for rooms that don't name one <select name="building_id"><option value="">Create "Imported (building not given)"</option>{% for x in buildings %}<option value="{{ x.id }}" {{ 'selected' if cfg.building_id == x.id }}>{{ x.name }}</option>{% endfor %}</select></label>
+      <label>How were these acquired? <select name="acquisition_basis">{% for x in ACQ_BASIS %}<option {{ 'selected' if (cfg.acquisition_basis or 'Unknown') == x }}>{{ x }}</option>{% endfor %}</select></label>
+      <label>The cost column is <select name="cost_basis">{% for x in COST_BASIS %}<option {{ 'selected' if (cfg.cost_basis or 'Unknown') == x }}>{{ x }}</option>{% endfor %}</select>
+        <span class="hint">A whole-purchase value is never copied onto each asset.</span></label>
+      <label>Tax <select name="tax_included"><option value="">Not stated</option><option value="1" {{ 'selected' if cfg.tax_included == 1 }}>Included</option><option value="0" {{ 'selected' if cfg.tax_included == 0 }}>Not included</option></select></label>
+      <label>A row with no status is <select name="default_stage"><option {{ 'selected' if cfg.default_stage != 'Deployed' }}>In stock</option><option {{ 'selected' if cfg.default_stage == 'Deployed' }}>Deployed</option></select></label>
+      <label class="check"><input type="checkbox" name="create_rooms" value="1" {{ 'checked' if cfg.create_rooms is not defined or cfg.create_rooms }}> Create buildings and rooms that don't exist yet</label>
+      <label>Units you expect (optional) <input type="number" name="expected_rows" min="0" value="{{ cfg.expected_rows or '' }}"><span class="hint">The preview compares this with what it found.</span></label>
+      <label>Total cost you expect (optional) <input name="expected_cost" value="{{ cfg.expected_cost or '' }}" placeholder="e.g. 4500000"></label>
+      <label>Save this mapping as <input name="save_mapping" placeholder="e.g. ERP fixed asset report"><span class="hint">Reused the next time the same layout comes in.</span></label>
+    </div>
+  </div>
+  <div class="actions"><button class="btn">Continue</button><a class="btn ghost" href="{{ url_for('imports') }}">Cancel</a></div>
+</form>
+{% endblock %}

@@ -28,8 +28,12 @@
       <a href="{{ url_for('loans') }}" class="{{ 'on' if ep == 'loans' }}" {{ 'aria-current=page' if ep == 'loans' }}>{{ icon('<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>') }}Lent out</a>
       <a href="{{ url_for('register') }}" class="{{ 'on' if ep == 'register' }}" {{ 'aria-current=page' if ep == 'register' }}>{{ icon('<path d="M4 4h16v16H4zM4 9h16M9 9v11"/>') }}Stock register</a>
       <a href="{{ url_for('labels') }}" class="{{ 'on' if ep == 'labels' }}" {{ 'aria-current=page' if ep == 'labels' }}>{{ icon('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>') }}QR labels</a>
+      {% if can('purchase') %}
+      <a href="{{ url_for('batches') }}" class="{{ 'on' if ep == 'batches' }}" {{ 'aria-current=page' if ep == 'batches' }}>{{ icon('<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>') }}Purchase batches</a>
+      {% endif %}
       {% if can('admin') %}
       <div class="sep">Admin</div>
+      <a href="{{ url_for('imports') }}" class="{{ 'on' if ep in ('imports', 'import_new', 'import_map', 'import_values', 'import_preview') }}" {{ 'aria-current=page' if ep in ('imports', 'import_new', 'import_map', 'import_values', 'import_preview') }}>{{ icon('<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>') }}Imports</a>
       <a href="{{ url_for('settings') }}" class="{{ 'on' if ep == 'settings' }}" {{ 'aria-current=page' if ep == 'settings' }}>{{ icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>') }}Locations &amp; categories</a>
       <a href="{{ url_for('users') }}" class="{{ 'on' if ep == 'users' }}" {{ 'aria-current=page' if ep == 'users' }}>{{ icon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>') }}Users</a>
       {% endif %}

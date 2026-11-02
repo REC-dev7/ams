@@ -118,6 +118,26 @@ CREATE TABLE IF NOT EXISTS photos (
   id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
   issue_id INTEGER REFERENCES issues(id) ON DELETE SET NULL, file TEXT NOT NULL,
   uploaded_by INTEGER REFERENCES users(id), at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS import_batches (
+  id INTEGER PRIMARY KEY, filename TEXT NOT NULL, stored_file TEXT NOT NULL, sha256 TEXT NOT NULL, size INTEGER,
+  uploaded_by INTEGER REFERENCES users(id), uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP, sheet TEXT, header_row INTEGER DEFAULT 1,
+  settings_json TEXT, status TEXT NOT NULL DEFAULT 'Uploaded', total_rows INTEGER, created_n INTEGER, skipped_n INTEGER, error_n INTEGER,
+  approved_by INTEGER REFERENCES users(id), approved_at TEXT, reversed_at TEXT, notes TEXT);
+CREATE TABLE IF NOT EXISTS staged_rows (
+  id INTEGER PRIMARY KEY, batch_id INTEGER NOT NULL REFERENCES import_batches(id) ON DELETE CASCADE, row_no INTEGER,
+  raw_json TEXT, data_json TEXT, kind TEXT, errors_json TEXT, warnings_json TEXT, dup_asset_id INTEGER,
+  decision TEXT DEFAULT 'Create', asset_id INTEGER, purchase_batch_id INTEGER);
+CREATE TABLE IF NOT EXISTS import_mappings (
+  id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL, signature TEXT NOT NULL, columns_json TEXT NOT NULL,
+  created_by INTEGER REFERENCES users(id), created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS value_maps (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL, target TEXT NOT NULL, UNIQUE (kind, source));
+CREATE TABLE IF NOT EXISTS purchase_batches (
+  id INTEGER PRIMARY KEY, import_batch_id INTEGER REFERENCES import_batches(id), description TEXT NOT NULL,
+  category_id INTEGER REFERENCES categories(id), department_id INTEGER REFERENCES departments(id), quantity INTEGER NOT NULL,
+  unit_cost REAL, total_cost REAL, cost_basis TEXT, tax_included INTEGER, vendor TEXT, po_number TEXT, invoice_number TEXT,
+  purchase_date TEXT, status TEXT NOT NULL DEFAULT 'Unconfirmed', units_created INTEGER DEFAULT 0, notes TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 
 app = Flask(__name__)
@@ -693,98 +713,6 @@ def csv_response(filename, header, rows):
     w.writerow(header)
     w.writerows(rows)
     return Response(out.getvalue(), mimetype="text/csv", headers={"Content-Disposition": f"attachment; filename={filename}"})
-
-
-def import_rows(reader):
-    """Insert CSV rows as assets. Missing buildings/rooms/categories are created.
-    Returns (count, errors); caller commits only when errors is empty."""
-    missing = {"name", "building", "room"} - set(reader.fieldnames or [])
-    if missing:
-        return 0, [f"Missing column(s): {', '.join(sorted(missing))}"]
-    errors, count = [], 0
-    for line, raw in enumerate(reader, start=2):
-        r = {k: (raw.get(k) or "").strip() or None for k in IMPORT_COLS}
-        if not any(r.values()):
-            continue
-        if not (r["name"] and r["building"] and r["room"]):
-            errors.append(f"Row {line}: name, building and room are required")
-            continue
-        if r["status"] and r["status"] not in STATUSES:
-            errors.append(f"Row {line}: status must be one of {', '.join(STATUSES)}")
-            continue
-        try:
-            cost = opt_float(r["cost"], "cost")
-        except ValueError as e:
-            errors.append(f"Row {line}: {e}")
-            continue
-        parent_id = None
-        if r["parent_tag"]:
-            p = q("SELECT id, room_id FROM assets WHERE tag=?", (r["parent_tag"],), one=True)
-            if not p:
-                errors.append(f"Row {line}: parent_tag {r['parent_tag']} not found (put parents above their parts)")
-                continue
-            parent_id = p["id"]
-        db().execute("INSERT OR IGNORE INTO buildings(name) VALUES (?)", (r["building"],))
-        bid = q("SELECT id FROM buildings WHERE name=?", (r["building"],), one=True)["id"]
-        db().execute("INSERT OR IGNORE INTO rooms(building_id, name, type) VALUES (?,?, 'Other')", (bid, r["room"]))
-        rid = q("SELECT id FROM rooms WHERE building_id=? AND name=?", (bid, r["room"]), one=True)["id"]
-        cid = None
-        if r["category"]:
-            db().execute("INSERT OR IGNORE INTO categories(name) VALUES (?)", (r["category"],))
-            cid = q("SELECT id FROM categories WHERE name=?", (r["category"],), one=True)["id"]
-        if parent_id:
-            rid = p["room_id"]  # parts live where their parent lives
-        stage, cond = {"Working": ("Deployed", "Working"), "Faulty": ("Deployed", "Faulty"), "Under service": ("Under maintenance", "Faulty"),
-                       "In store": ("In stock", "Working"), "Scrapped": ("Disposed", "Obsolete"), "Lost": ("Lost / missing", "Unknown")}[r["status"] or "Working"]
-        dep = q("SELECT id FROM departments WHERE name=?", (r["department"],), one=True) if r["department"] else None
-        try:
-            cur = db().execute(
-                """INSERT INTO assets(tag, name, category_id, room_id, parent_id, lifecycle_stage, condition, brand, model, serial_no,
-                   ip_address, mac_address, purchase_date, warranty_until, cost, vendor, notes, managing_dept_id, owning_dept_id, acquisition_basis)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (r["tag"] or next_tag(), r["name"], cid, rid, parent_id, stage, cond, r["brand"], r["model"],
-                 r["serial_no"], r["ip_address"], r["mac_address"], r["purchase_date"], r["warranty_until"],
-                 cost, r["vendor"], r["notes"], dep["id"] if dep else None, dep["id"] if dep else None, "Unknown"))
-        except sqlite3.IntegrityError:
-            errors.append(f"Row {line}: tag {r['tag']} already exists")
-            continue
-        sync_status(cur.lastrowid)
-        log(cur.lastrowid, "Added (CSV import)", etype="Created")
-        count += 1
-    return count, errors
-
-
-@app.route("/assets/import", methods=["GET", "POST"])
-@role("admin")
-def asset_import():
-    if request.args.get("template"):
-        return csv_response("asset-import-template.csv", IMPORT_COLS, [
-            ["CSE-L3-001", "L3-PC-01", "Desktop computer", "CSE Block", "Computer Lab 3", "Working", "Dell", "OptiPlex 7090",
-             "SN123", "10.10.3.11", "", "2024-06-01", "2027-06-01", "52000", "Vendor name", "", "", "CSE"],
-            ["", "8 GB RAM", "RAM", "CSE Block", "Computer Lab 3", "Working", "Crucial", "", "", "", "", "", "", "", "", "",
-             "CSE-L3-001", "CSE"]])
-    errors = []
-    if request.method == "POST":
-        fh = request.files.get("file")
-        if not fh or not fh.filename:
-            errors = ["Choose a CSV file."]
-        else:
-            try:
-                text = fh.read().decode("utf-8-sig")
-            except UnicodeDecodeError:
-                text = None
-                errors = ["File must be UTF-8 CSV (Excel: Save As → CSV UTF-8)."]
-            if text is not None:
-                count, errors = import_rows(csv.DictReader(io.StringIO(text)))
-                if errors:
-                    db().rollback()
-                elif not count:
-                    errors = ["No rows found."]
-                else:
-                    db().commit()
-                    flash(f"Imported {count} assets.", "ok")
-                    return redirect(url_for("assets", parts=1))
-    return render_template("import.html", errors=errors, cols=IMPORT_COLS)
 
 
 NEW_STAGES = ["Requested", "Ordered", "Received (pending inspection)", "In stock"]  # "Deployed" comes from issuing it to someone
@@ -1645,6 +1573,9 @@ def seed_demo():
         c.execute("UPDATE counters SET value=(SELECT MAX(id) FROM assets) WHERE name='tag'")
 
 
+import ams_import  # noqa: E402  (the import wizard and purchase batches live in their own file)
+
+ams_import.init(sys.modules[__name__])
 init_db()
 if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
     seed_demo()
