@@ -1,0 +1,35 @@
+{% extends "base.html" %}{% from "_ui.html" import bar_list %}{% block title %}Reports{% endblock %}
+{% macro tbl(rows, label) %}<div class="card flush"><h2>{{ label }}</h2><div class="table-wrap"><table><tbody>
+  {% for r in rows %}<tr><td>{{ r.k }}</td><td class="num"><b>{{ r.n }}</b></td></tr>{% else %}<tr><td class="empty">Nothing yet.</td></tr>{% endfor %}</tbody></table></div></div>{% endmacro %}
+{% block body %}
+<div class="head"><div><h1>Reports</h1><div class="muted">Counts are of individually tracked assets (parts excluded, archived and scrapped left out){% if user.role in ('hod', 'custodian', 'lab_assistant') %}, for your department only{% endif %}.</div></div></div>
+
+<h2 style="margin:0 0 8px">Where things stand</h2>
+<div class="kpis">{% for label, n in flow.items() %}<a class="kpi {{ 'alert' if n and label in ('Faulty', 'Not verified in 12 months') }}" href="{{ url_for('assets', **({'In stock': {'stage': 'In stock'}, 'Issued (deployed)': {'stage': 'Deployed'}, 'Under maintenance': {'stage': 'Under maintenance'}, 'Faulty': {'condition': 'Faulty'}, 'Not verified in 12 months': {'unverified': 1}}.get(label, {'stage': 'Retirement proposed'}))) }}"><div class="label">{{ label }}</div><div class="value">{{ n }}</div></a>{% endfor %}</div>
+
+<div class="grid g3" style="margin-bottom:16px">
+  {{ tbl(by_dept, 'By managing department') }}{{ tbl(by_cat, 'By kind of asset') }}{{ tbl(by_stage, 'By life stage') }}
+  {{ tbl(by_cond, 'By working condition') }}{{ tbl(by_room, 'By place (top 15)') }}{{ tbl(by_holder, 'By department using it') }}
+</div>
+<p class="muted" style="font-size:13px">"By department using it" shows who holds an asset (allotment), not how much it is actually used. Usage needs separate evidence.</p>
+
+<h2 style="margin:20px 0 8px">Data quality <a class="btn sm ghost" href="{{ url_for('reports', csv='quality') }}" style="margin-left:8px">Download all as CSV</a></h2>
+<div class="grid g2" style="margin-bottom:16px">
+  {% for label, pair in quality.items() %}<div class="card flush"><h2>{{ label }} <span class="chip plain {{ 'bad' if pair[0] else 'good' }}">{{ pair[0] }}</span></h2>
+    {% if pair[1] %}<ul class="plain" style="padding:0 18px 14px">{% for a in pair[1] %}<li><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }}</li>{% endfor %}{% if pair[0] > pair[1]|length %}<li class="muted">and {{ pair[0] - pair[1]|length }} more</li>{% endif %}</ul>{% endif %}</div>{% endfor %}
+</div>
+
+<h2 style="margin:20px 0 8px">Money</h2>
+<div class="kpis">
+  <div class="kpi"><div class="label">Recorded purchase cost</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(cost_total) }}</div><div class="sub">{{ cost_n }} assets with a per-unit or line cost. Whole-purchase values are not added to each asset.</div></div>
+  <div class="kpi"><div class="label">Book value today</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(book_total) }}</div><div class="sub">straight-line over the category life. Finance must approve these rules before the figure is used officially.</div></div>
+</div>
+
+{% if imports %}
+<h2 style="margin:20px 0 8px">Imports compared with the register</h2>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Import</th><th>Status</th><th class="num">Rows</th><th class="num">Added</th><th class="num">In the register now</th><th class="num">Skipped</th><th class="num">Units waiting confirmation</th></tr></thead>
+  <tbody>{% for i in imports %}<tr><td><a href="{{ url_for('import_preview', bid=i.id) }}">#{{ i.id }} {{ i.filename }}</a></td><td>{{ i.status }}</td><td class="num">{{ i.total_rows if i.total_rows is not none else '—' }}</td>
+    <td class="num">{{ i.created_n if i.created_n is not none else '—' }}</td><td class="num">{{ i.live_now }}</td><td class="num">{{ i.skipped_n if i.skipped_n is not none else '—' }}</td><td class="num">{{ i.units_waiting }}</td></tr>{% endfor %}</tbody>
+</table></div></div>{% endif %}
+{% endblock %}

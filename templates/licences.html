@@ -1,0 +1,42 @@
+{% extends "base.html" %}{% block title %}Software licences{% endblock %}
+{% macro form(l) %}
+<div class="form-grid">
+  <label>Product * <input name="product" required value="{{ l.product if l else '' }}"></label>
+  <label>Vendor <input name="vendor" value="{{ (l.vendor if l else '') or '' }}"></label>
+  <label>Type <select name="licence_type">{% for t in LICENCE_TYPES %}<option {{ 'selected' if l and l.licence_type == t }}>{{ t }}</option>{% endfor %}</select></label>
+  <label>Counted per <select name="metric">{% for t in LICENCE_METRICS %}<option {{ 'selected' if l and l.metric == t }}>{{ t }}</option>{% endfor %}</select></label>
+  <label>Licences bought * <input type="number" name="quantity" min="1" required value="{{ l.quantity if l else 1 }}"></label>
+  <label>In use now <input type="number" name="in_use" min="0" value="{{ l.in_use if (l and l.in_use is not none) else '' }}"></label>
+  <label>Starts <input type="date" name="start_date" value="{{ (l.start_date if l else '') or '' }}"></label>
+  <label>Renews on <input type="date" name="renewal_date" value="{{ (l.renewal_date if l else '') or '' }}"></label>
+  <label>Support ends <input type="date" name="support_end" value="{{ (l.support_end if l else '') or '' }}"></label>
+  <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost" value="{{ l.cost if (l and l.cost is not none) else '' }}"></label>
+  <label>PO number <input name="po_number" value="{{ (l.po_number if l else '') or '' }}"></label>
+  <label>Department <select name="department_id"><option value="">Whole campus</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if l and l.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></label>
+  {% if can('purchase') %}<label>Licence key / contract ID <input name="key_ref" placeholder="{{ 'Leave blank to keep the saved one' if l else '' }}" autocomplete="off"></label>{% endif %}
+  <label class="full">Notes <input name="notes" value="{{ (l.notes if l else '') or '' }}"></label>
+</div>
+{% endmacro %}
+{% block body %}
+<div class="head"><div><h1>Software licences</h1><div class="muted">What the college has the right to use, how many, and when it renews. Installed copies are a separate thing. Keys are visible only to purchase and admins.</div></div>
+  <a class="btn ghost" href="{{ url_for('licences', csv=1) }}">Export CSV</a></div>
+{% if can('purchase') %}
+<details class="card drop" style="margin-bottom:16px"><summary class="head" style="margin:0"><h2 style="margin:0">Add a licence</h2><span class="btn sm">Add</span></summary>
+  <form method="post" action="{{ url_for('licence_add') }}" class="stack" style="margin-top:12px">{{ csrf }}{{ form(none) }}<div><button class="btn">Save licence</button></div></form></details>
+{% endif %}
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Product</th><th>Type</th><th class="num">Bought</th><th class="num">In use</th><th>Renews</th><th>Department</th><th>Key</th></tr></thead>
+  <tbody>{% for l in rows %}
+    <tr><td><b>{{ l.product }}</b><div class="muted" style="font-size:12px">{{ l.vendor or '' }}{% if l.po_number %} · {{ l.po_number }}{% endif %}</div></td>
+      <td>{{ l.licence_type }}<div class="muted" style="font-size:12px">{{ l.metric }}</div></td>
+      <td class="num">{{ l.quantity }}</td>
+      <td class="num">{% if l.in_use is not none %}{{ l.in_use }}{% if l.in_use > l.quantity %} <span class="chip plain bad">over by {{ l.in_use - l.quantity }}</span>{% elif l.in_use < l.quantity %} <span class="muted">{{ l.quantity - l.in_use }} spare</span>{% endif %}{% else %}—{% endif %}</td>
+      <td>{{ l.renewal_date or '—' }}{% if l.renewal_date and l.renewal_date < today %} <span class="chip plain bad">expired</span>{% elif l.renewal_date and l.renewal_date <= soon %} <span class="chip plain warn">soon</span>{% endif %}</td>
+      <td>{{ l.dept or 'Campus' }}</td>
+      <td>{% if l.key_ref %}{% if can('purchase') %}<span class="mono">{{ l.key_ref }}</span>{% else %}<span class="muted">hidden</span>{% endif %}{% else %}—{% endif %}</td></tr>
+    {% if can('purchase') %}<tr><td colspan="7" style="padding-top:0"><details class="drop"><summary class="muted" style="cursor:pointer;font-size:12px">Edit or archive {{ l.product }}</summary>
+      <form method="post" action="{{ url_for('licence_update', lid=l.id) }}" class="stack" style="margin-top:8px">{{ csrf }}{{ form(l) }}<div class="actions"><button class="btn sm">Save changes</button></div></form>
+      <form method="post" action="{{ url_for('licence_archive', lid=l.id) }}" style="margin-top:6px">{{ csrf }}<button class="btn danger sm">Archive</button></form></details></td></tr>{% endif %}
+  {% else %}<tr><td colspan="7" class="empty">No licences recorded yet.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

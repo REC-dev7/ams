@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% from "_ui.html" import pager %}{% block title %}Documents{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Documents</h1><div class="muted">Purchase orders, invoices, receipts, warranties and other papers kept with their assets. Older versions are never deleted.</div></div></div>
+<form class="filters">
+  <input type="search" name="q" value="{{ request.args.q }}" aria-label="Search documents" placeholder="Search file name, note or PO / invoice number…">
+  <select name="kind" aria-label="Kind"><option value="">All kinds</option>{% for k in KINDS %}<option {{ 'selected' if request.args.kind == k }}>{{ k }}</option>{% endfor %}</select>
+  <button class="btn">Search</button>
+</form>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Document</th><th>Kind</th><th>Reference</th><th>Assets</th><th>Added</th></tr></thead>
+  <tbody>
+  {% for d in rows %}
+    <tr><td><a href="{{ url_for('document_open', did=d.id) }}"><b>{{ d.original_name }}</b></a>{% if d.version > 1 %} <span class="chip plain">v{{ d.version }}</span>{% endif %}{% if d.replaced %} <span class="chip plain warn">older version</span>{% endif %}
+      {% if d.description %}<div class="muted" style="font-size:12px">{{ d.description }}</div>{% endif %}</td>
+      <td>{{ d.kind }}</td><td class="mono" style="font-size:12px">{{ d.reference or '' }}</td>
+      <td class="mono" style="font-size:12px">{{ d.tags or '' }}</td>
+      <td>{{ d.uploaded_at[:10] }}<div class="muted" style="font-size:12px">{{ d.by_name or '' }}</div></td></tr>
+  {% else %}<tr><td colspan="5" class="empty">No documents yet. Add them from an asset's page.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{{ pager(pg) }}
+{% endblock %}

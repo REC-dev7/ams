@@ -3,7 +3,7 @@
 <form method="post" action="{{ url_for('settings_delete', kind=kind, item=item.id) }}" onsubmit="return confirm('Delete {{ item.name }}?')">{{ csrf }}<button class="btn danger sm">Delete</button></form>
 {% endif %}{% endmacro %}
 {% block body %}
-<div class="head"><div><h1>Locations &amp; categories</h1><div class="muted">Set up your campus: buildings → rooms (labs, classrooms, offices) and equipment categories</div></div></div>
+<div class="head"><div><h1>Locations &amp; categories</h1> <a class="btn sm ghost" href="{{ url_for('fields') }}" style="vertical-align:middle">Specification fields</a><div class="muted">Set up your campus: buildings → rooms (labs, classrooms, offices) and equipment categories</div></div></div>
 
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card flush" id="buildings">

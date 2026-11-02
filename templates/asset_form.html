@@ -34,6 +34,11 @@
     <label>MAC address <input name="mac_address" value="{{ f.mac_address or '' }}"></label>
   </div>
 
+  <div id="specs" data-defs='{{ attribute_defs()|tojson }}' data-values='{{ (attribute_values(a.id) if a else {})|tojson }}' data-posted='{{ request.form.to_dict()|tojson if request.method == "POST" else "{}" }}'>
+    <h2 style="margin-top:22px">Specifications <span class="muted" style="font-weight:500;font-size:13px">(for the chosen kind of asset)</span></h2>
+    <div class="form-grid" id="specs-fields"></div>
+  </div>
+
   <h2 style="margin-top:22px">Where and who is responsible</h2>
   <div class="form-grid">
     {% if not parent %}
@@ -79,4 +84,5 @@
     <a class="btn ghost" href="{{ url_for('asset', aid=a.id) if a else url_for('assets') }}">Cancel</a>
   </div>
 </form>
+<script src="{{ url_for('static', filename='fields.js', v=static_v) }}" defer></script>
 {% endblock %}

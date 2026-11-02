@@ -49,6 +49,10 @@
   {% if a.archived_at %}<p style="margin:14px 0 0"><b>Archived</b> {{ a.archived_at[:10] }}: {{ a.archive_reason }}</p>{% endif %}
 </div>
 
+{% set specs = asset_specs(a.id) %}
+{% if specs %}<div class="card" style="margin-bottom:16px"><h2>Specifications</h2>
+  <div class="facts">{% for s in specs %}<div><span>{{ s.name }}</span><b>{{ s.value }}{% if s.unit %} {{ s.unit }}{% endif %}</b></div>{% endfor %}</div></div>{% endif %}
+
 {% if not a.parent_id %}
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card">
@@ -101,6 +105,31 @@
     </form>
     {% elif not next_stages %}<p class="muted" style="margin:0">This is the final stage. The record stays for history.</p>{% endif %}
   </div>
+</div>
+{% endif %}
+
+{% set docs = asset_documents(a.id) %}
+{% if docs or can('purchase') %}
+<div class="card" style="margin-bottom:16px">
+  <h2>Documents</h2>
+  <ul class="plain">
+    {% for x in docs if x.current %}{% set d = x.d %}
+    <li><span class="chip plain">{{ d.kind }}</span> <a href="{{ url_for('document_open', did=d.id) }}"><b>{{ d.original_name }}</b></a>{% if d.version > 1 %} <span class="chip plain">v{{ d.version }}</span>{% endif %}
+      {% if d.reference %}<span class="mono muted">{{ d.reference }}</span>{% endif %}{% if d.description %} <span class="muted">{{ d.description }}</span>{% endif %}
+      <span class="muted" style="font-size:12px">· {{ d.uploaded_at[:10] }}{% if d.by_name %} · {{ d.by_name }}{% endif %}</span></li>
+    {% else %}<li class="muted">No documents yet. Keep the purchase order, invoice, goods receipt and warranty with the asset.</li>{% endfor %}
+  </ul>
+  {% if docs|selectattr('current', 'false')|list %}<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Older versions</summary>
+    <ul class="plain" style="margin-top:6px">{% for x in docs if not x.current %}<li><a href="{{ url_for('document_open', did=x.d.id) }}">{{ x.d.original_name }}</a> <span class="muted">{{ x.d.kind }} v{{ x.d.version }} · {{ x.d.uploaded_at[:10] }}</span></li>{% endfor %}</ul></details>{% endif %}
+  {% if can('purchase') %}
+  <form method="post" action="{{ url_for('document_add', aid=a.id) }}" enctype="multipart/form-data" class="filters" style="margin:12px 0 0">{{ csrf }}
+    <input type="file" name="file" required aria-label="File" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.xlsx,.docx,.csv,.txt">
+    <select name="kind" aria-label="Kind of document">{% for k in DOC_KINDS %}<option>{{ k }}</option>{% endfor %}</select>
+    <input name="reference" placeholder="PO / invoice no." aria-label="Reference">
+    <input name="description" placeholder="Note (optional)" aria-label="Note">
+    {% if docs|selectattr('current')|list %}<select name="replaces" aria-label="New version of"><option value="">A new document</option>{% for x in docs if x.current %}<option value="{{ x.d.id }}">New version of: {{ x.d.original_name }}</option>{% endfor %}</select>{% endif %}
+    <button class="btn sm">Add document</button>
+  </form>{% endif %}
 </div>
 {% endif %}
 

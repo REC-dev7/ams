@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Specification fields{% endblock %}
+{% block body %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('settings') }}">Settings</a></div><h1>Specification fields</h1>
+  <div class="muted">Each kind of asset can ask for its own details: a computer for CPU and RAM, a switch for ports. Pick a data type and unit so values stay comparable.</div></div></div>
+<div class="card" style="margin-bottom:16px"><h2>Add a field</h2>
+  <form method="post" action="{{ url_for('field_add') }}" class="filters" style="margin:0">{{ csrf }}
+    <select name="category_id" required aria-label="Category"><option value="">Kind of asset…</option>{% for c in cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
+    <input name="name" placeholder="Field name, e.g. RAM" required>
+    <select name="datatype" aria-label="Data type">{% for k, v in DATATYPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <input name="unit" placeholder="Unit, e.g. GB" style="width:110px">
+    <input name="choices" placeholder="Choices (comma separated), for a choice field">
+    <label class="check"><input type="checkbox" name="required" value="1"> Required</label>
+    <button class="btn">Add</button></form></div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Kind of asset</th><th>Fields</th></tr></thead>
+  <tbody>{% for c in cats if defs.get(c.id) %}
+    <tr><td><b>{{ c.name }}</b><div class="muted" style="font-size:12px">{{ c.n }} asset(s)</div></td>
+      <td>{% for d in defs[c.id] %}
+        <form method="post" action="{{ url_for('field_delete', did=d.id) }}" class="actions" style="margin:0 0 6px">{{ csrf }}
+          <span class="chip plain">{{ d.name }}</span> <span class="muted" style="font-size:12px">{{ DATATYPES[d.datatype] }}{% if d.unit %} · {{ d.unit }}{% endif %}{% if d.choices %} · {{ d.choices }}{% endif %}{% if d.required %} · required{% endif %}{% if d.used %} · used by {{ d.used }}{% endif %}</span>
+          {% if d.used %}<label class="check"><input type="checkbox" name="sure" value="1"> delete anyway</label>{% endif %}
+          <button class="btn danger sm">Delete</button></form>{% endfor %}</td></tr>
+  {% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

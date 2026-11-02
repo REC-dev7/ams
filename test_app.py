@@ -448,9 +448,165 @@ def test_import_wizard():
     assert row("SELECT COUNT(*) n FROM staged_rows WHERE batch_id=? AND decision='Create'", bid7)["n"] == 1
 
 
+def test_documents():
+    m.DB = os.path.join(tempfile.mkdtemp(), "d.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF"
+    cse, ece = asset_id("L1-PC-01"), asset_id("Digital Storage Oscilloscope")
+
+    def add(aid, name, data, **kw):
+        return c.post(f"/assets/{aid}/documents", data={"csrf": csrf(c, f"/assets/{aid}"), "file": (io.BytesIO(data), name), **kw}, content_type="multipart/form-data")
+
+    login(c, "purchase")
+    assert b"PO / invoice" in c.get(f"/assets/{cse}").data
+    r = add(cse, "po-0412.pdf", pdf, kind="Purchase order", reference="PO/2023/0412", description="Original order")
+    assert r.status_code == 302
+    d1 = row("SELECT * FROM documents ORDER BY id DESC LIMIT 1")
+    assert d1["sha256"] and d1["version"] == 1 and d1["file"].endswith(".pdf") and open(os.path.join(m.UPLOADS, "docs", d1["file"]), "rb").read() == pdf
+    for bad, name in [(b"<html><script>alert(1)</script></html>", "x.pdf"), (b"MZ\x90\x00 binary", "x.exe"), (b"<svg onload=alert(1)>", "x.png"), (b"%PDF-1.4", "x.html"), (b"x" * (9 * 1024 * 1024), "big.pdf")]:
+        r = add(cse, name, bad, kind="Invoice")
+        assert b"are refused" in c.get(r.location, follow_redirects=True).data or r.status_code == 413, name
+    assert row("SELECT COUNT(*) n FROM documents")["n"] == 1
+
+    # a new version keeps the old one
+    add(cse, "po-0412-signed.pdf", pdf + b"\n% signed", replaces=str(d1["id"]))
+    d2 = row("SELECT * FROM documents ORDER BY id DESC LIMIT 1")
+    assert (d2["version"], d2["supersedes_id"], d2["kind"]) == (2, d1["id"], "Purchase order")
+    page = c.get(f"/assets/{cse}").get_data(as_text=True)
+    assert "po-0412-signed.pdf" in page and "Older versions" in page and "po-0412.pdf" in page
+    assert c.get(f"/documents/{d1['id']}").data == pdf and c.get(f"/documents/{d1['id']}").headers["Content-Disposition"].startswith("inline")
+
+    # insurance papers are for admins, purchase and auditors only
+    add(cse, "policy.pdf", pdf, kind="Insurance")
+    ins = row("SELECT id FROM documents WHERE kind='Insurance'")["id"]
+    add(ece, "ece-invoice.pdf", pdf, kind="Invoice")
+    ece_doc = row("SELECT id FROM documents WHERE original_name='ece-invoice.pdf'")["id"]
+    assert c.get(f"/documents/{ins}").status_code == 200
+    login(c, "auditor")
+    assert c.get(f"/documents/{ins}").status_code == 200 and c.get("/documents").status_code == 200
+    assert add(cse, "no.pdf", pdf).status_code == 403  # read only
+    login(c, "hod")  # CSE head: sees CSE papers, not insurance, not other departments'
+    assert c.get(f"/documents/{d1['id']}").status_code == 200
+    assert c.get(f"/documents/{ins}").status_code == 403 and c.get(f"/documents/{ece_doc}").status_code == 404
+    assert b"policy.pdf" not in c.get("/documents").data and b"ece-invoice.pdf" not in c.get("/documents").data and b"po-0412" in c.get("/documents").data
+    assert b"policy.pdf" not in c.get(f"/assets/{cse}").data
+    login(c, "staff")  # a custodian never sees purchase papers
+    assert c.get(f"/documents/{d1['id']}").status_code == 403 and c.get("/documents").status_code == 403
+    assert b"po-0412" not in c.get(f"/assets/{cse}").data
+    login(c, "lab")
+    assert add(cse, "no.pdf", pdf).status_code == 403
+    login(c, "admin")
+    assert b"po-0412-signed.pdf" in c.get("/documents?q=0412").data and b"policy.pdf" in c.get("/documents?kind=Insurance").data
+    assert c.get("/documents/99999").status_code == 404
+
+
+def test_specs_stock_licences_reports():
+    m.DB = os.path.join(tempfile.mkdtemp(), "x.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+
+    # specification fields: a computer asks for RAM in GB; bad values are refused with a plain message
+    desktop = str(row("SELECT id FROM categories WHERE name='Desktop computer'")["id"])
+    switch = str(row("SELECT id FROM categories WHERE name='Network switch'")["id"])
+    ram = row("SELECT id FROM attribute_defs WHERE name='RAM' AND category_id=?", int(desktop))["id"]
+    managed = row("SELECT id FROM attribute_defs WHERE name='Managed'")["id"]
+    form = c.get("/assets/new").get_data(as_text=True)
+    assert 'id="specs"' in form and "fields.js" in form and '"RAM"' in form
+    base = {"name": "Spec PC", "managing_dept_id": dept("CSE"), "room_id": "1", "category_id": desktop}
+    assert b"RAM must be a number in GB" in post(c, "/assets/new", {**base, f"attr_{ram}": "lots"}, "/assets/new").data
+    r = post(c, "/assets/new", {**base, f"attr_{ram}": "16", f"attr_{managed}": "Yes"}, "/assets/new")  # 'Managed' isn't a desktop field, so it is ignored
+    aid = int(r.location.rsplit("/", 1)[1])
+    assert row("SELECT value FROM attribute_values WHERE asset_id=? AND attr_id=?", aid, ram)["value"] == "16"
+    assert row("SELECT COUNT(*) n FROM attribute_values WHERE asset_id=?", aid)["n"] == 1
+    page = c.get(f"/assets/{aid}").get_data(as_text=True)
+    assert "Specifications" in page and "16 GB" in page
+    sw = int(post(c, "/assets/new", {**base, "category_id": switch, "name": "Spec switch", f"attr_{managed}": "Yes"}, "/assets/new").location.rsplit("/", 1)[1])
+    assert b"must be one of" in post(c, "/assets/new", {**base, "category_id": switch, "name": "x", f"attr_{managed}": "Maybe"}, "/assets/new").data
+    post(c, f"/assets/{aid}/edit", {**base, "category_id": switch, f"attr_{managed}": "No"}, f"/assets/{aid}/edit")  # change the kind: old values go
+    assert row("SELECT COUNT(*) n FROM attribute_values WHERE asset_id=? AND attr_id=?", aid, ram)["n"] == 0
+    assert row("SELECT value FROM attribute_values WHERE asset_id=? AND attr_id=?", aid, managed)["value"] == "No"
+    # admins design the fields; a required one is enforced
+    post(c, "/settings/fields/add", {"category_id": desktop, "name": "Warranty tag", "datatype": "text", "required": "1"}, "/settings/fields")
+    assert b"Warranty tag is required" in post(c, "/assets/new", {**base, "name": "x2"}, "/assets/new").data
+    assert b"already has a field" in c.get(post(c, "/settings/fields/add", {"category_id": desktop, "name": "Warranty tag", "datatype": "text"}, "/settings/fields").location, follow_redirects=True).data
+    wt = row("SELECT id FROM attribute_defs WHERE name='Warranty tag'")["id"]
+    post(c, f"/settings/fields/{wt}/delete", {}, "/settings/fields")
+    assert row("SELECT 1 FROM attribute_defs WHERE id=?", wt) is None
+    login(c, "tech")
+    assert c.get("/settings/fields").status_code == 403
+
+    # consumable stock: counted, never negative, every change kept
+    login(c, "admin")
+    r = post(c, "/stock/new", {"name": "HP 12A toner", "unit": "nos", "min_level": "2", "department_id": dept("CSE")}, "/stock")
+    iid = int(r.location.rsplit("/", 1)[1])
+    mv = lambda **kw: post(c, f"/stock/{iid}/move", {"event_date": date.today().isoformat(), **kw}, f"/stock/{iid}")
+    mv(kind="Received", qty="10", reference="GRN-5")
+    assert b"Only 10 nos in stock" in c.get(mv(kind="Issued", qty="11", reason="x").location, follow_redirects=True).data
+    assert b"Say why" in c.get(mv(kind="Issued", qty="1").location, follow_redirects=True).data
+    mv(kind="Issued", qty="9", reason="Office printers", department_id=dept("CSE"))
+    assert row("SELECT COALESCE(SUM(qty),0) b FROM stock_movements WHERE item_id=?", iid)["b"] == 1
+    assert b"low" in c.get("/stock").data
+    mv(kind="Adjusted", qty="3", direction="up", reason="Recount")
+    assert row("SELECT COALESCE(SUM(qty),0) b FROM stock_movements WHERE item_id=?", iid)["b"] == 4
+    assert row("SELECT COUNT(*) n FROM stock_movements WHERE item_id=?", iid)["n"] == 3
+    other = int(post(c, "/stock/new", {"name": "ECE soldering wire", "unit": "m", "department_id": dept("ECE")}, "/stock").location.rsplit("/", 1)[1])
+    login(c, "staff")
+    assert c.get(f"/stock/{iid}").status_code == 200 and c.get(f"/stock/{other}").status_code == 404  # CSE user: no ECE stock
+    assert mv(kind="Received", qty="5").status_code == 403 and post(c, "/stock/new", {"name": "x"}, "/stock").status_code == 403
+    login(c, "lab")
+    assert mv(kind="Received", qty="5").status_code == 302
+
+    # licences: keys only for purchase and admins, exports leave them out for others, renewals flagged
+    login(c, "purchase")
+    soon = (date.today() + timedelta(days=20)).isoformat()
+    post(c, "/licences/add", {"product": "MATLAB Campus", "quantity": "100", "in_use": "120", "renewal_date": soon, "licence_type": "Subscription",
+                              "metric": "Per user", "key_ref": "ABCD-1234-SECRET"}, "/licences")
+    post(c, "/licences/add", {"product": "Old CAD", "quantity": "5", "renewal_date": "2020-01-01", "key_ref": "OLD-KEY"}, "/licences")
+    page = c.get("/licences").get_data(as_text=True)
+    assert "ABCD-1234-SECRET" in page and "over by 20" in page and "soon" in page and "expired" in page
+    assert b"ABCD-1234-SECRET" in c.get("/licences?csv=1").data
+    assert b"Quantity must be 1 or more" in c.get(post(c, "/licences/add", {"product": "x", "quantity": "0"}, "/licences").location, follow_redirects=True).data
+    for who in ("hod", "tech", "auditor"):
+        login(c, who)
+        assert b"ABCD-1234-SECRET" not in c.get("/licences").data and b"ABCD-1234-SECRET" not in c.get("/licences?csv=1").data, who
+        assert post(c, "/licences/add", {"product": "x", "quantity": "1"}, "/licences").status_code == 403
+    login(c, "staff")
+    assert c.get("/licences").status_code == 403
+    login(c, "purchase")
+    lid = row("SELECT id FROM licences WHERE product='Old CAD'")["id"]
+    post(c, f"/licences/{lid}/update", {"product": "Old CAD", "quantity": "7", "in_use": "3"}, "/licences")
+    assert row("SELECT quantity, key_ref FROM licences WHERE id=?", lid)["key_ref"] == "OLD-KEY"  # a blank key field keeps the saved key
+    post(c, f"/licences/{lid}/archive", {}, "/licences")
+    assert b"Old CAD" not in c.get("/licences").data
+
+    # reports: counts by department, data quality, scoped for department users, CSV
+    login(c, "admin")
+    rp = c.get("/reports").get_data(as_text=True)
+    assert "By managing department" in rp and "Data quality" in rp and "Location unknown" in rp and "allotment" in rp
+    assert b"Old network switch" in c.get("/reports").data
+    assert c.get("/reports?csv=quality").data.startswith(b"problem,tag,asset") and b"Old network switch" in c.get("/reports?csv=quality").data
+    full = len(re.findall(r"<li><a class=\"mono\"", rp))
+    login(c, "hod")
+    scoped = c.get("/reports").get_data(as_text=True)
+    assert "Mechanical" not in scoped and "Old network switch" not in scoped and "for your department only" in scoped
+    login(c, "auditor")
+    assert c.get("/reports").status_code == 200
+    login(c, "staff")
+    assert c.get("/reports").status_code == 200 and "Imports compared" not in c.get("/reports").get_data(as_text=True)
+    assert full >= 1
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
     test_old_database_upgrades()
     test_import_wizard()
+    test_documents()
+    test_specs_stock_licences_reports()
     print("ok")

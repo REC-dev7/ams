@@ -1,0 +1,20 @@
+{% extends "base.html" %}{% block title %}Stock{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Consumables &amp; stock</h1><div class="muted">Toner, cables, keyboards and other things you count rather than tag. Every receipt, issue and count correction is kept.</div></div></div>
+{% if can('edit') %}
+<div class="card" style="margin-bottom:16px"><h2>Add an item</h2>
+  <form method="post" action="{{ url_for('stock_new') }}" class="filters" style="margin:0">{{ csrf }}
+    <input name="name" placeholder="Item, e.g. HP 12A toner" required><input name="unit" placeholder="Unit (nos, boxes, m)" style="width:150px">
+    <input type="number" name="min_level" min="0" step="any" placeholder="Reorder at" style="width:120px" aria-label="Minimum level">
+    <select name="department_id" aria-label="Department"><option value="">All departments</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
+    <select name="room_id" aria-label="Stored in"><option value="">Stored in…</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.building }} · {{ r.name }}</option>{% endfor %}</select>
+    <button class="btn">Add</button></form></div>
+{% endif %}
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Item</th><th>Department</th><th>Stored in</th><th class="num">In stock</th><th class="num">Reorder at</th></tr></thead>
+  <tbody>{% for s in rows %}
+    <tr><td><a href="{{ url_for('stock_item', iid=s.id) }}"><b>{{ s.name }}</b></a></td><td>{{ s.dept or 'All' }}</td><td>{{ s.room or '—' }}</td>
+      <td class="num"><b>{{ '%g'|format(s.balance) }}</b> {{ s.unit }}{% if s.balance <= s.min_level %} <span class="chip plain bad">low</span>{% endif %}</td><td class="num">{{ '%g'|format(s.min_level) }}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty">No items yet.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

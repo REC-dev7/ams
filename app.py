@@ -138,6 +138,30 @@ CREATE TABLE IF NOT EXISTS purchase_batches (
   unit_cost REAL, total_cost REAL, cost_basis TEXT, tax_included INTEGER, vendor TEXT, po_number TEXT, invoice_number TEXT,
   purchase_date TEXT, status TEXT NOT NULL DEFAULT 'Unconfirmed', units_created INTEGER DEFAULT 0, notes TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY, file TEXT NOT NULL, original_name TEXT NOT NULL, ext TEXT NOT NULL, size INTEGER, sha256 TEXT NOT NULL,
+  kind TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, supersedes_id INTEGER REFERENCES documents(id), description TEXT,
+  reference TEXT, uploaded_by INTEGER REFERENCES users(id), uploaded_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS document_links (
+  document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+  purchase_batch_id INTEGER REFERENCES purchase_batches(id) ON DELETE CASCADE);
+CREATE TABLE IF NOT EXISTS attribute_defs (
+  id INTEGER PRIMARY KEY, category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE, name TEXT NOT NULL,
+  datatype TEXT NOT NULL, unit TEXT, choices TEXT, required INTEGER DEFAULT 0, sort INTEGER DEFAULT 0, UNIQUE (category_id, name));
+CREATE TABLE IF NOT EXISTS attribute_values (
+  asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE, attr_id INTEGER NOT NULL REFERENCES attribute_defs(id) ON DELETE CASCADE,
+  value TEXT, PRIMARY KEY (asset_id, attr_id));
+CREATE TABLE IF NOT EXISTS stock_items (
+  id INTEGER PRIMARY KEY, name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'nos', department_id INTEGER REFERENCES departments(id),
+  room_id INTEGER REFERENCES rooms(id), min_level REAL DEFAULT 0, notes TEXT, archived_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id INTEGER PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE, qty REAL NOT NULL, kind TEXT NOT NULL,
+  event_date TEXT NOT NULL, entered_at TEXT DEFAULT CURRENT_TIMESTAMP, user_id INTEGER REFERENCES users(id),
+  department_id INTEGER REFERENCES departments(id), reason TEXT, reference TEXT);
+CREATE TABLE IF NOT EXISTS licences (
+  id INTEGER PRIMARY KEY, product TEXT NOT NULL, vendor TEXT, licence_type TEXT, metric TEXT, quantity INTEGER NOT NULL DEFAULT 1,
+  in_use INTEGER, start_date TEXT, renewal_date TEXT, support_end TEXT, key_ref TEXT, cost REAL, po_number TEXT,
+  department_id INTEGER REFERENCES departments(id), notes TEXT, archived_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 
 app = Flask(__name__)
@@ -216,6 +240,8 @@ def init_db():
         c.execute("INSERT OR IGNORE INTO counters(name, value) VALUES ('tag', (SELECT COALESCE(MAX(id), 0) FROM assets))")
         c.executemany("INSERT OR IGNORE INTO departments(name) VALUES (?)", [(n,) for n in DEFAULT_DEPARTMENTS])
         c.executemany("INSERT OR IGNORE INTO categories(name) VALUES (?)", [(n,) for n in DEFAULT_CATEGORIES])
+        import ams_extras  # the starting specification fields per kind of asset
+        ams_extras.seed_attributes(c)
         # lending used two plain columns; it is now a custody record like every other hand-over
         for a in c.execute("SELECT id, assigned_to, assigned_due FROM assets WHERE assigned_to IS NOT NULL").fetchall():
             if not c.execute("SELECT 1 FROM custody WHERE asset_id=?", (a[0],)).fetchone():
@@ -775,6 +801,7 @@ def asset_new():
                                [v[k] for k in FIELDS] + [parent["id"] if parent else None, stage])
             aid = cur.lastrowid
             sync_status(aid)
+            save_attributes(aid, v["category_id"], request.form)
             log(aid, "Added" + (f" as part of {parent['tag']}" if parent else ""), etype="Created")
             if parent:
                 log(parent["id"], f"Part added: {v['name']}", etype="Part added")
@@ -824,7 +851,8 @@ def asset(aid):
         photos=[(p["file"], f"Issue: {p['issue']}" if p["issue"] else p["at"][:10]) for p in q(
             "SELECT p.*, i.title issue FROM photos p LEFT JOIN issues i ON i.id=p.issue_id WHERE p.asset_id=? ORDER BY p.id DESC", (aid,))],
         activity=q("""SELECT ac.*, u.name who FROM activity ac LEFT JOIN users u ON u.id=ac.user_id
-                      WHERE ac.asset_id=? ORDER BY ac.id DESC LIMIT 40""", (aid,)),
+                      WHERE ac.asset_id=?""" + ("" if allowed("docs") else " AND (ac.event_type IS NULL OR ac.event_type!='Document')")
+                   + " ORDER BY ac.id DESC LIMIT 40", (aid,)),  # document names are only for people who may open the documents
         custody=current_custody(aid),
         custody_history=q("""SELECT c.*, d.name dept, u.name by_name FROM custody c LEFT JOIN departments d ON d.id=c.department_id
                              LEFT JOIN users u ON u.id=c.started_by WHERE c.asset_id=? ORDER BY c.id DESC""", (aid,)),
@@ -860,6 +888,10 @@ def asset_edit(aid):
             db().execute("""UPDATE assets SET room_id=?, location_unresolved=?, managing_dept_id=?, owning_dept_id=? WHERE parent_id=?""",
                          (v["room_id"], v["location_unresolved"], v["managing_dept_id"], v["owning_dept_id"], aid))
             sync_status(aid)
+            before = {r["attr_id"]: r["value"] for r in q("SELECT attr_id, value FROM attribute_values WHERE asset_id=?", (aid,))}
+            save_attributes(aid, v["category_id"], request.form)
+            if before != {r["attr_id"]: r["value"] for r in q("SELECT attr_id, value FROM attribute_values WHERE asset_id=?", (aid,))}:
+                changes.append("Specifications updated")
             if changes:
                 log(aid, "; ".join(changes), etype="Corrected" if tag_changed else "Edited", reason=request.form.get("tag_reason") if tag_changed else None)
             db().commit()
@@ -1576,6 +1608,12 @@ def seed_demo():
 import ams_import  # noqa: E402  (the import wizard and purchase batches live in their own file)
 
 ams_import.init(sys.modules[__name__])
+import ams_docs  # noqa: E402
+
+ams_docs.init(sys.modules[__name__])
+import ams_extras  # noqa: E402
+
+ams_extras.init(sys.modules[__name__])
 init_db()
 if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
     seed_demo()
