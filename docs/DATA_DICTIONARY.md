@@ -32,6 +32,23 @@ Other names for an asset: old asset codes, other systems' IDs (with their source
 | added_at | TEXT | default CURRENT_TIMESTAMP |
 | added_by | INTEGER | links to users.id |
 
+## asset_interfaces
+
+
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER | primary key |
+| asset_id | INTEGER | required, links to assets.id |
+| name | TEXT | required |
+| mac | TEXT |  |
+| ip | TEXT |  |
+| vlan | TEXT |  |
+| connected_to | TEXT |  |
+| notes | TEXT |  |
+| added_by | INTEGER | links to users.id |
+| added_at | TEXT | default CURRENT_TIMESTAMP |
+
 ## assets
 
 One row per individually tracked item (and per part of an item). id is the internal key; tag is the permanent label that is never reused.
@@ -83,6 +100,7 @@ One row per individually tracked item (and per part of an item). id is the inter
 | import_batch_id | INTEGER |  |
 | source_row | INTEGER |  |
 | source_json | TEXT |  |
+| rack | TEXT |  |
 
 ## attribute_defs
 
@@ -118,6 +136,7 @@ Campus buildings.
 | id | INTEGER | primary key |
 | name | TEXT | required |
 | code | TEXT |  |
+| campus | TEXT |  |
 
 ## categories
 
@@ -128,6 +147,52 @@ Kinds of asset (asset types), with the useful life used for book value.
 | id | INTEGER | primary key |
 | name | TEXT | required |
 | life_years | INTEGER | default 5 |
+
+## check_findings
+
+
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER | primary key |
+| kind | TEXT | required |
+| room_id | INTEGER | links to rooms.id |
+| asset_id | INTEGER | links to assets.id |
+| description | TEXT |  |
+| found_on | TEXT | required |
+| found_by | INTEGER | links to users.id |
+| status | TEXT | required, default 'Open' |
+| resolution | TEXT |  |
+| resolved_by | INTEGER | links to users.id |
+| resolved_at | TEXT |  |
+
+## contract_assets
+
+
+
+| Field | Type | Notes |
+|---|---|---|
+| contract_id | INTEGER | primary key, links to contracts.id |
+| asset_id | INTEGER | primary key, links to assets.id |
+
+## contracts
+
+
+
+| Field | Type | Notes |
+|---|---|---|
+| id | INTEGER | primary key |
+| kind | TEXT | required |
+| vendor | TEXT |  |
+| reference | TEXT |  |
+| start_date | TEXT |  |
+| end_date | TEXT |  |
+| cost | REAL |  |
+| department_id | INTEGER | links to departments.id |
+| notes | TEXT |  |
+| archived_at | TEXT |  |
+| created_by | INTEGER | links to users.id |
+| created_at | TEXT | default CURRENT_TIMESTAMP |
 
 ## counters
 

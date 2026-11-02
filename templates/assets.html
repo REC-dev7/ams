@@ -34,11 +34,15 @@
   {% if a %}<a class="btn ghost" href="{{ url_for('assets') }}">Clear</a>{% endif %}
 </form>
 
+<form method="post" action="{{ url_for('assets_bulk') }}">{{ csrf }}
+{% if can('move') %}<div class="filters" style="margin-bottom:8px"><select name="action" aria-label="Do this to the ticked assets">{% for k, v in BULK_ACTIONS.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+  <button class="btn ghost">Preview for the ticked assets</button><span class="muted" style="align-self:center;font-size:12px">You see what would happen before anything changes.</span></div>{% endif %}
 <div class="card flush"><div class="table-wrap"><table>
-  <thead><tr><th>Tag</th><th>Name</th><th>Category</th><th>Location</th><th>Make / model</th><th>Department</th><th>Stage</th><th>Issues</th></tr></thead>
+  <thead><tr>{% if can('move') %}<th></th>{% endif %}<th>Tag</th><th>Name</th><th>Category</th><th>Location</th><th>Make / model</th><th>Department</th><th>Stage</th><th>Issues</th></tr></thead>
   <tbody>
   {% for r in rows %}
     <tr>
+      {% if can('move') %}<td><input type="checkbox" name="ids" value="{{ r.id }}" aria-label="Tick {{ r.tag }}"></td>{% endif %}
       <td><a class="mono" href="{{ url_for('asset', aid=r.id) }}">{{ r.tag }}</a></td>
       <td><b>{{ r.name }}</b>{% if r.parent_tag %}<div class="muted" style="font-size:12px">part of {{ r.parent_tag }}</div>{% elif r.part_count %}<div class="muted" style="font-size:12px">{{ r.part_count }} parts</div>{% endif %}</td>
       <td>{{ r.cat or '—' }}</td>
@@ -48,8 +52,9 @@
       <td>{{ stage(r.lifecycle_stage) }} {{ cond(r.condition) }}</td>
       <td>{% if r.open_issues %}<span class="badge">{{ r.open_issues }}</span>{% endif %}</td>
     </tr>
-  {% else %}<tr><td colspan="8" class="empty">No assets match.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="9" class="empty">No assets match.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
+</form>
 {{ pager(pg) }}
 {% endblock %}

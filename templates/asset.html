@@ -41,7 +41,7 @@
       {% if a.cost and a.purchase_date %}<div class="muted" style="font-size:12px">{{ a.life_years or 5 }}-yr straight line</div>{% endif %}</div>
     <div><span>Next service</span><b>{{ a.next_service_due or '—' }}
       {% if a.next_service_due and a.next_service_due < today %}<span class="chip plain bad">overdue</span>{% endif %}</b></div>
-    {% for label, val in [('PO', a.po_number), ('Invoice', a.invoice_number), ('Indent', a.indent_no), ('CPR', a.cpr_no), ('GRN', a.grn_no), ('Stock register', a.stock_register_ref)] if val %}
+    {% for label, val in [('Rack', a.rack), ('PO', a.po_number), ('Invoice', a.invoice_number), ('Indent', a.indent_no), ('CPR (payment receipt)', a.cpr_no), ('GRN', a.grn_no), ('Stock register', a.stock_register_ref)] if val %}
     <div><span>{{ label }}</span><b class="mono">{{ val }}</b></div>
     {% endfor %}
   </div>
@@ -133,6 +133,22 @@
 </div>
 {% endif %}
 
+{% set ifaces = asset_interfaces(a.id) %}
+{% if ifaces or can('edit') %}
+<div class="card flush" style="margin-bottom:16px">
+  <h2>Network interfaces <span class="muted" style="font-weight:500;font-size:13px">(ports and addresses, kept apart from the device)</span></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Port</th><th>MAC</th><th>IP</th><th>VLAN</th><th>Connected to</th><th></th></tr></thead>
+    <tbody>{% for i in ifaces %}<tr><td><b>{{ i.name }}</b></td><td class="mono">{{ i.mac or '' }}</td><td class="mono">{{ i.ip or '' }}</td><td>{{ i.vlan or '' }}</td><td>{{ i.connected_to or '' }}</td>
+      <td>{% if can('edit') %}<form method="post" action="{{ url_for('interface_delete', iid=i.id) }}">{{ csrf }}<button class="btn sm ghost">Remove</button></form>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">No interfaces recorded.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if can('edit') %}<form method="post" action="{{ url_for('interface_add', aid=a.id) }}" class="filters" style="margin:12px 18px">{{ csrf }}
+    <input name="name" placeholder="Port, e.g. Gi1/0/12" required><input name="mac" placeholder="MAC"><input name="ip" placeholder="IP"><input name="vlan" placeholder="VLAN" style="width:90px">
+    <input name="connected_to" placeholder="Connected to"><button class="btn sm">Add</button></form>{% endif %}
+</div>
+{% endif %}
+
 <div class="card" style="margin-bottom:16px">
   <h2>Other codes &amp; IDs</h2>
   <ul class="plain">
@@ -152,11 +168,14 @@
 <div class="card flush" style="margin-bottom:16px">
   <h2>Parts &amp; components <span class="muted">({{ parts|length }})</span></h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Tag</th><th>Part</th><th>Category</th><th>Make / model</th><th>Serial</th><th>Status</th></tr></thead>
+    <thead><tr><th>Tag</th><th>Part</th><th>Category</th><th>Make / model</th><th>Serial</th><th>Status</th>{% if can('edit') %}<th></th>{% endif %}</tr></thead>
     <tbody>
     {% for p in parts %}
       <tr><td><a class="mono" href="{{ url_for('asset', aid=p.id) }}">{{ p.tag }}</a></td><td>{{ p.name }}</td><td>{{ p.cat or '—' }}</td>
-          <td>{{ p.brand or '' }} {{ p.model or '' }}</td><td class="mono">{{ p.serial_no or '' }}</td><td>{{ status(p.status) }}</td></tr>
+          <td>{{ p.brand or '' }} {{ p.model or '' }}</td><td class="mono">{{ p.serial_no or '' }}</td><td>{{ status(p.status) }}{% if p.archived_at %} <span class="chip plain bad">replaced</span>{% endif %}</td>
+          {% if can('edit') %}<td>{% if not p.archived_at %}<details class="drop"><summary class="btn sm ghost">Replace</summary>
+            <form method="post" action="{{ url_for('part_replace', aid=p.id) }}" class="filters" style="margin:6px 0 0">{{ csrf }}
+              <input name="brand" placeholder="New brand" style="width:110px"><input name="serial_no" placeholder="New serial" style="width:120px"><input name="reason" placeholder="Why" required style="width:150px"><button class="btn sm">Replace</button></form></details>{% endif %}</td>{% endif %}</tr>
     {% else %}<tr><td colspan="6" class="empty">No parts recorded. {% if can('edit') %}<a href="{{ url_for('asset_new', parent=a.id) }}">Add RAM, disk, monitor…</a>{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table></div>

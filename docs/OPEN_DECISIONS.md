@@ -6,7 +6,7 @@ The requirements guide (v0.3) lists these as open. The system uses the default s
 |---|---|---|
 | Permanent tag format | `AMS-00042` (prefix + counter) | `TAG_PREFIX` and `next_tag()` in `app.py` |
 | Internal ID as the database key, tag as a separate unique field | Yes: `assets.id` is the key, `assets.tag` is unique | already in place |
-| What CPR means and how it relates to the Indent | Both are plain reference fields on an asset | fields `indent_no`, `cpr_no` |
+| What CPR means and how it relates to the Indent | The college's working definition is **Computerized Payment Receipt**, to be confirmed with staff. CPR and Indent are separate reference fields on an asset | fields `indent_no`, `cpr_no` |
 | Who approves purchase, movement, retirement, disposal | Retirement: proposer plus a different HOD or admin. Moves: any role with the move right. No purchase approval yet (guide Phase 3) | `CAPS` in `app.py`, `docs/PERMISSIONS.md` |
 | Which IT assets are in scope when another department owns them | All assets; managing, owning and using department are separate fields | |
 | Which components get their own tag | Parts are tracked as child assets with their own tag | |

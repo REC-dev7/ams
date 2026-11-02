@@ -52,6 +52,7 @@
       {% for b in buildings %}<optgroup label="{{ b.name }}">
         {% for r in rooms if r.building_id == b.id %}<option value="{{ r.id }}" {{ 'selected' if f.room_id|string == r.id|string }}>{{ r.name }}</option>{% endfor %}
       </optgroup>{% endfor %}</select></label>
+    <label>Rack / position <input name="rack" value="{{ f.rack or '' }}" placeholder="e.g. Rack 2, U12 (network rooms)"></label>
     <label class="check"><input type="checkbox" name="location_unresolved" value="1" {{ 'checked' if f.location_unresolved }}> Location not known yet (flag for follow-up)</label>
     {% endif %}
   </div>
@@ -70,7 +71,7 @@
     <label>PO number <input name="po_number" value="{{ f.po_number or '' }}"></label>
     <label>Invoice number <input name="invoice_number" value="{{ f.invoice_number or '' }}"></label>
     <label>Indent number <input name="indent_no" value="{{ f.indent_no or '' }}"></label>
-    <label>CPR number <input name="cpr_no" value="{{ f.cpr_no or '' }}"></label>
+    <label>CPR number (Computerized Payment Receipt) <input name="cpr_no" value="{{ f.cpr_no or '' }}"></label>
     <label>GRN number <input name="grn_no" value="{{ f.grn_no or '' }}"></label>
     <label>Stock register (book / page) <input name="stock_register_ref" value="{{ f.stock_register_ref or '' }}"></label>
     <label class="full">Notes <textarea name="notes">{{ f.notes or '' }}</textarea></label>

@@ -656,6 +656,128 @@ def test_backup_and_restore():
         pass
 
 
+def test_findings_bulk_parts_contracts_api():
+    m.DB = os.path.join(tempfile.mkdtemp(), "m.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+
+    # scanning a label or typing a tag or an old code opens the asset; scoped users can't reach other departments' assets
+    a1 = asset_id("L1-PC-01")
+    tag = row("SELECT tag FROM assets WHERE id=?", a1)["tag"]
+    assert c.get(f"/t/{tag}").location.endswith(f"/assets/{a1}") and c.get(f"/t/{tag.lower()}").location.endswith(f"/assets/{a1}")
+    assert c.get("/t/REC/CSE/L1/PC-01").location.endswith(f"/assets/{a1}")  # old code
+    assert "/assets?q=" in c.get("/t/NOPE-1").location
+    ece_tag = row("SELECT tag FROM assets WHERE name='Function Generator'")["tag"]
+    login(c, "staff")
+    assert "/assets?q=" in c.get(f"/t/{ece_tag}").location
+
+    # stock check: equipment seen in the wrong room or not registered at all is recorded, then decided
+    login(c, "lab")
+    other = asset_id("L2-PC-01")
+    other_tag = row("SELECT tag FROM assets WHERE id=?", other)["tag"]
+    post(c, "/rooms/1/audit", {"found": str(a1), "extra": f"{other_tag}\nHP printer on the side table, no label\n"}, "/rooms/1?audit=1")
+    assert row("SELECT verification FROM assets WHERE id=?", other)["verification"] == "Wrong location"
+    fs = row_all("SELECT * FROM check_findings ORDER BY id")
+    assert [f["kind"] for f in fs] == ["Wrong location", "Unregistered"] and fs[1]["description"].startswith("HP printer")
+    page = c.get("/findings").get_data(as_text=True)
+    assert "HP printer" in page and "Wrong place" in page
+    assert b"Say what was decided" in c.get(post(c, f"/findings/{fs[0]['id']}/resolve", {"how": "move", "note": ""}, "/findings").location, follow_redirects=True).data
+    post(c, f"/findings/{fs[0]['id']}/resolve", {"how": "move", "note": "Moved during the lab rearrangement"}, "/findings")
+    a = row("SELECT room_id, verification FROM assets WHERE id=?", other)
+    assert (a["room_id"], a["verification"]) == (1, "Verified")
+    post(c, f"/findings/{fs[1]['id']}/resolve", {"how": "dismiss", "note": "Belongs to a visitor"}, "/findings")
+    assert row("SELECT status FROM check_findings WHERE id=?", fs[1]["id"])["status"] == "Dismissed"
+    login(c, "staff")
+    assert c.get("/findings").status_code == 403
+
+    # bulk actions: a preview changes nothing; the run gives a result for every asset and leaves the failures alone
+    login(c, "admin")
+    spares = [asset_id("Spare 24-inch Monitor"), asset_id("Donated Desktop")]
+    gone = asset_id("PA System")
+    post(c, f"/assets/{gone}/delete", {"reason": "mistake"}, f"/assets/{gone}")  # archived: can't be moved
+    ids = [str(i) for i in (*spares, gone)]
+    pv = post(c, "/assets/bulk", {"ids": ids, "action": "department", "department_id": dept("ECE"), "reason": "Lab setup", "event_date": date.today().isoformat()}, "/assets")
+    text = pv.get_data(as_text=True)
+    assert "Preview: nothing has been changed yet" in text and "2 of 3 would go through" in text and "archived" in text.lower()
+    assert all(row("SELECT lifecycle_stage FROM assets WHERE id=?", i)["lifecycle_stage"] == "In stock" for i in spares)
+    ran = post(c, "/assets/bulk", {"ids": ids, "action": "department", "step": "run", "department_id": dept("ECE"), "reason": "Lab setup", "event_date": date.today().isoformat()}, "/assets")
+    assert "2 of 3 done" in ran.get_data(as_text=True)
+    assert all(row("SELECT lifecycle_stage, using_dept_id FROM assets WHERE id=?", i)["using_dept_id"] == int(dept("ECE")) for i in spares)
+    no_reason = post(c, "/assets/bulk", {"ids": [str(spares[0])], "action": "stockroom"}, "/assets").get_data(as_text=True)
+    assert "Say why" in no_reason and "0 of 1" in no_reason
+    post(c, "/assets/bulk", {"ids": [str(spares[0])], "action": "verify", "step": "run"}, "/assets")
+    assert row("SELECT verification FROM assets WHERE id=?", spares[0])["verification"] == "Verified"
+    login(c, "staff")
+    assert post(c, "/assets/bulk", {"ids": [str(a1)], "action": "verify"}, "/assets").status_code == 403
+    login(c, "lab")  # a CSE lab assistant can't move another department's asset in bulk
+    r = post(c, "/assets/bulk", {"ids": [str(asset_id("Function Generator"))], "action": "verify", "step": "run"}, "/assets").get_data(as_text=True)
+    assert "0 of 1" in r and "not in your department" in r.lower()
+
+    # replace a part: the old one stays in the history, the new one gets its own tag
+    login(c, "admin")
+    old = row("SELECT * FROM assets WHERE parent_id=? AND name='8 GB DDR4 RAM'", a1)
+    assert b"Say why" in c.get(post(c, f"/assets/{old['id']}/replace", {"reason": " "}, f"/assets/{a1}").location, follow_redirects=True).data
+    post(c, f"/assets/{old['id']}/replace", {"reason": "Faulty module", "brand": "Kingston", "serial_no": "KS-1"}, f"/assets/{a1}")
+    assert row("SELECT archived_at, status FROM assets WHERE id=?", old["id"])["status"] == "Scrapped"
+    new = row("SELECT * FROM assets WHERE parent_id=? AND brand='Kingston'", a1)
+    assert new["tag"] != old["tag"] and new["room_id"] == old["room_id"] and new["managing_dept_id"] == old["managing_dept_id"]
+    assert row("SELECT 1 FROM activity WHERE asset_id=? AND event_type='Part replaced'", a1) and b"replaced" in c.get(f"/assets/{a1}").data
+    assert c.get(post(c, f"/assets/{a1}/replace", {"reason": "x"}, f"/assets/{a1}").location, follow_redirects=True).status_code == 200  # not a part: refused politely
+    assert row("SELECT COUNT(*) n FROM assets WHERE name='L1-PC-01' AND archived_at IS NOT NULL")["n"] == 0
+
+    # network interfaces, rack, campus
+    sw = asset_id("Core Switch")
+    post(c, f"/assets/{sw}/interfaces", {"name": "Gi1/0/12", "ip": "10.10.0.50", "vlan": "20", "connected_to": "L1-PC-02"}, f"/assets/{sw}")
+    assert b"Gi1/0/12" in c.get(f"/assets/{sw}").data
+    iid = row("SELECT id FROM asset_interfaces WHERE asset_id=?", sw)["id"]
+    post(c, f"/interfaces/{iid}/delete", {}, f"/assets/{sw}")
+    assert row("SELECT COUNT(*) n FROM asset_interfaces WHERE asset_id=?", sw)["n"] == 0
+    post(c, f"/assets/{sw}/edit", {"name": "Core Switch", "managing_dept_id": dept("Central IT"), "room_id": "3", "rack": "Rack 2, U12"}, f"/assets/{sw}/edit")
+    assert b"Rack 2, U12" in c.get(f"/assets/{sw}").data
+    post(c, "/settings/buildings/add", {"name": "Annex", "campus": "North campus"}, "/settings")
+    assert row("SELECT campus FROM buildings WHERE name='Annex'")["campus"] == "North campus"
+    login(c, "lab")
+    assert post(c, f"/assets/{sw}/interfaces", {"name": "x"}, f"/assets/{sw}").status_code == 403
+
+    # contracts and the reminders page
+    login(c, "purchase")
+    soon = (date.today() + timedelta(days=30)).isoformat()
+    post(c, "/contracts/add", {"kind": "AMC", "vendor": "Cisco partner", "reference": "AMC-77", "end_date": soon, "assets": f"{row('SELECT tag FROM assets WHERE id=?', sw)['tag']}, NOPE-9"}, "/contracts")
+    assert row("SELECT COUNT(*) n FROM contract_assets")["n"] == 1
+    assert row("SELECT 1 FROM contracts WHERE reference='AMC-77'")
+    assert b"Give the end date" in c.get(post(c, "/contracts/add", {"kind": "AMC", "assets": ""}, "/contracts").location, follow_redirects=True).data
+    rem = c.get("/reminders").get_data(as_text=True)
+    assert "AMC-77" in rem and "Warranty ending" in rem and "Low stock" in rem
+    login(c, "staff")
+    rem = c.get("/reminders").get_data(as_text=True)
+    assert "AMC-77" not in rem and c.get("/contracts").status_code == 403
+    login(c, "tech")
+    assert post(c, "/contracts/add", {"kind": "AMC", "end_date": soon}, "/contracts").status_code == 403
+
+    # read-only API for other systems: off without a token, never gives costs, wrong tokens refused
+    os.environ.pop("AMS_API_TOKEN", None)
+    anon = m.app.test_client()
+    assert anon.get(f"/api/v1/assets/{tag}").status_code == 404
+    os.environ["AMS_API_TOKEN"] = "test-token-123"
+    try:
+        assert anon.get(f"/api/v1/assets/{tag}").status_code == 401
+        assert anon.get(f"/api/v1/assets/{tag}", headers={"Authorization": "Bearer nope"}).status_code == 401
+        ok = anon.get(f"/api/v1/assets/{tag}", headers={"Authorization": "Bearer test-token-123"})
+        j = ok.get_json()
+        assert ok.status_code == 200 and j["tag"] == tag and j["name"] == "L1-PC-01" and j["room"] == "Computer Lab 1" and j["building"] == "CSE Block"
+        assert not {"cost", "vendor", "po_number", "key_ref", "notes"} & set(j)
+        assert anon.get("/api/v1/assets/NOPE", headers={"Authorization": "Bearer test-token-123"}).status_code == 404
+        lst = anon.get("/api/v1/assets?q=L1-PC&limit=3", headers={"Authorization": "Bearer test-token-123"}).get_json()
+        assert lst["count"] == 3 and all("tag" in i for i in lst["items"])
+        assert anon.get("/api/v1/assets/" + tag, headers={"Authorization": "Bearer test-token-123"}).headers["Content-Type"].startswith("application/json")
+        assert anon.post("/api/v1/assets", headers={"Authorization": "Bearer test-token-123"}).status_code in (400, 405)  # nothing can be written
+    finally:
+        os.environ.pop("AMS_API_TOKEN", None)
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -664,4 +786,5 @@ if __name__ == "__main__":
     test_documents()
     test_specs_stock_licences_reports()
     test_backup_and_restore()
+    test_findings_bulk_parts_contracts_api()
     print("ok")

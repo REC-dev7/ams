@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% block title %}Contracts{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Contracts</h1><div class="muted">AMC, warranty, insurance, support and lease agreements, and the assets each one covers. You are reminded before they end.</div></div></div>
+{% if can('purchase') %}
+<details class="card drop" style="margin-bottom:16px"><summary class="head" style="margin:0"><h2 style="margin:0">Add a contract</h2><span class="btn sm">Add</span></summary>
+  <form method="post" action="{{ url_for('contract_add') }}" class="stack" style="margin-top:12px">{{ csrf }}
+    <div class="form-grid">
+      <label>Kind <select name="kind">{% for k in CONTRACT_KINDS %}<option>{{ k }}</option>{% endfor %}</select></label>
+      <label>Vendor <input name="vendor"></label>
+      <label>Reference / number <input name="reference"></label>
+      <label>Department <select name="department_id"><option value="">Whole campus</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>
+      <label>Starts <input type="date" name="start_date"></label>
+      <label>Ends * <input type="date" name="end_date" required></label>
+      <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost"></label>
+      <label>Notes <input name="notes"></label>
+      <label class="full">Assets covered (tags or old codes, separated by commas or new lines) <textarea name="assets" placeholder="AMS-00012, AMS-00013"></textarea></label>
+    </div>
+    <div><button class="btn">Save contract</button></div></form></details>
+{% endif %}
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Contract</th><th>Vendor</th><th>Ends</th><th>Covers</th><th></th></tr></thead>
+  <tbody>{% for c in rows %}
+    <tr><td><span class="chip plain">{{ c.kind }}</span> <b class="mono">{{ c.reference or '' }}</b><div class="muted" style="font-size:12px">{{ c.dept or 'Campus' }}{% if c.cost %} · ₹{{ '{:,.0f}'.format(c.cost) }}{% endif %}</div></td>
+      <td>{{ c.vendor or '—' }}</td>
+      <td>{{ c.end_date }} {% if c.end_date < today %}<span class="chip plain bad">ended</span>{% elif c.end_date <= soon %}<span class="chip plain warn">soon</span>{% endif %}</td>
+      <td class="mono" style="font-size:12px">{{ c.n }} asset(s){% if c.tags %}: {{ c.tags[:90] }}{% endif %}</td>
+      <td>{% if can('purchase') %}<form method="post" action="{{ url_for('contract_archive', cid=c.id) }}">{{ csrf }}<button class="btn sm ghost">Archive</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="5" class="empty">No contracts recorded yet.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

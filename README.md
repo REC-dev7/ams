@@ -31,7 +31,13 @@ The login page has a button for each.
 - **Consumables and software licences.** Counted stock that can't go negative, with every receipt and issue kept; licences with quantity, renewal alerts and keys visible only to purchase and admins.
 - **Reports.** By department, kind, stage, condition and place; what is in stock, issued, in repair, awaiting disposal or not verified; data-quality lists with CSV; imports compared with the register; cost reports that say whether they show purchase cost or book value.
 - **Roles.** Super admin, admin, system admin, purchase, HOD, lab assistant, custodian, auditor, plus IT technician. A user can have several roles. Department roles only see their own department's assets, enforced on the server. See `docs/PERMISSIONS.md`.
-- Also: buildings and rooms, parent and part assets, QR labels, stock-check sheets with a verification result, issues with photos, service log, lending with due dates, depreciation estimates.
+- **Stock-check findings.** While verifying a room you can list equipment that isn't on its list: something registered in another room is flagged "wrong location", anything else is recorded as unregistered. Each is decided and the decision kept.
+- **Bulk actions.** Tick assets in the list to issue them to a department, return them to the stockroom or mark them verified. You always see a preview first, then a result for every asset; failures are left untouched.
+- **Parts and interfaces.** Replacing a part archives the old one (kept in the history) and fits a new tagged one. Network devices have their ports, MACs, IPs and VLANs kept in their own list.
+- **Contracts and reminders.** AMC, warranty, insurance, support and lease agreements with the assets they cover; one Reminders page for warranties, service, contracts, licences, low stock, overdue loans, rooms to verify and retirements in progress.
+- **Scan or type a tag.** `/t/<tag or old code>` opens the asset, which is what a scanned label does.
+- **Read-only API** for other systems (the Helpdesk): see `docs/API.md`. Off until a token is set.
+- Also: buildings and rooms (with campus), rack position, parent and part assets, QR labels, stock-check sheets with a verification result, issues with photos, service log, lending with due dates, depreciation estimates.
 
 ## Importing a file
 
@@ -55,7 +61,7 @@ Run `--verify` after each backup and try a restore now and then. A backup you ha
 
 ## Handover documents (`docs/`)
 
-`DATA_DICTIONARY.md` and `PERMISSIONS.md` are generated from the code (`python docs/make_docs.py`). `ERD.md` shows how records connect. `OPEN_DECISIONS.md` lists what the college still has to decide. `RELEASE_CHECKLIST.md` is the pre-pilot list.
+`API.md` describes the read-only API. `DATA_DICTIONARY.md` and `PERMISSIONS.md` are generated from the code (`python docs/make_docs.py`). `ERD.md` shows how records connect. `OPEN_DECISIONS.md` lists what the college still has to decide. `RELEASE_CHECKLIST.md` is the pre-pilot list.
 
 ## Test
 
@@ -65,8 +71,8 @@ python test_app.py        # permissions, history, import wizard, documents, stoc
 
 ## Files
 
-`app.py` the app and core records · `ams_import.py` import wizard and purchase batches · `ams_docs.py` documents · `ams_extras.py` specification fields, stock, licences, reports · `backup.py` · `templates/`, `static/` · `samples/` · `docs/`
+`app.py` the app and core records · `ams_import.py` import wizard and purchase batches · `ams_docs.py` documents · `ams_extras.py` specification fields, stock, licences, reports · `ams_more.py` findings, bulk actions, contracts, reminders, API · `backup.py` · `templates/`, `static/` · `samples/` · `docs/`
 
 ## Known limits
 
-Uploads are checked by type and size but not virus-scanned. The database is SQLite on one server (the guide proposes PostgreSQL; the queries are parameterised so moving is a contained change). Online Indent/CPR/PO purchasing, warranty and AMC reminders, planned maintenance, ERP and Digii links are later phases in the guide and are not built.
+Uploads are checked by type and size but not virus-scanned. The database is SQLite on one server (the guide proposes PostgreSQL; the queries are parameterised so moving is a contained change). Online Indent/CPR/PO purchasing, planned maintenance, writing back from tickets, and ERP and Digii links are later phases in the guide and are not built.

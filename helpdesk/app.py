@@ -7,11 +7,15 @@ tickets can point at an AMS asset tag and show its name and location (read-only)
 """
 import csv
 import io
+import json
 import os
 import re
 import secrets
 import sqlite3
 import sys
+import time
+import urllib.parse
+import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -24,6 +28,9 @@ DB = os.path.join(HERE, "helpdesk.db")
 KEY_FILE = os.path.join(HERE, "secret.key")
 # ponytail: AMS link is a read-only peek at its sqlite file; swap for an HTTP API if they move to different servers
 AMS_DB = os.environ.get("AMS_DB", os.path.join(HERE, "..", "ams.db"))
+# on separate servers (Render) the AMS is asked over the web instead: its read-only API, with a shared secret
+AMS_URL = os.environ.get("AMS_URL", "").rstrip("/")
+AMS_TOKEN = os.environ.get("AMS_API_TOKEN", "")
 
 ROLES = ["admin", "technician", "staff", "coordinator", "hod", "auditor"]
 ROLE_LABEL = {"admin": "Admin", "technician": "IT technician", "staff": "Staff / faculty", "coordinator": "Dept coordinator",
@@ -226,12 +233,40 @@ ASSET_SQL = """SELECT a.id, a.tag, a.name, a.status, r.name room, b.name buildin
                LEFT JOIN rooms r ON r.id=a.room_id LEFT JOIN buildings b ON b.id=r.building_id"""
 
 
+_choices_cache = {"at": 0, "rows": []}
+
+
+def ams_http(path):
+    """Ask the AMS over the web. None when it isn't set up, is asleep or doesn't answer within a few seconds: tickets still work."""
+    if not (AMS_URL and AMS_TOKEN):
+        return None
+    req = urllib.request.Request(AMS_URL + path, headers={"Authorization": "Bearer " + AMS_TOKEN})
+    try:
+        with urllib.request.urlopen(req, timeout=4) as r:
+            return json.load(r)
+    except Exception:
+        return None
+
+
+def web_row(j):
+    return {"id": j["tag"], "tag": j["tag"], "name": j["name"], "status": j["status"], "building": j["building"] or "", "room": j["room"] or "location not known"}
+
+
 def asset_for(tag):
+    if AMS_URL:
+        j = ams_http("/api/v1/assets/" + urllib.parse.quote(tag, safe="")) if tag else None
+        return web_row(j) if j and "tag" in j else None
     rows = ams(ASSET_SQL + " WHERE a.tag=?", (tag,)) if tag else []
     return rows[0] if rows else None
 
 
 def asset_choices():
+    if AMS_URL:
+        if time.time() - _choices_cache["at"] > 300:  # a short cache keeps the ticket form quick
+            j = ams_http("/api/v1/assets?limit=500")
+            if j:
+                _choices_cache.update(at=time.time(), rows=[web_row(i) for i in j["items"]])
+        return _choices_cache["rows"]
     return ams(ASSET_SQL + " WHERE a.parent_id IS NULL AND a.status!='Scrapped' ORDER BY b.name, r.name, a.tag LIMIT 3000")
 
 
@@ -311,7 +346,7 @@ def template_globals():
         "can": lambda *roles: bool(user) and user["role"] in roles,
         "CATEGORIES": CATEGORIES, "PRIORITIES": PRIORITIES, "STATUSES": STATUSES, "ROLES": ROLES, "ROLE_LABEL": ROLE_LABEL,
         "MANAGE": MANAGE, "TEAMS": TEAMS, "REQUEST_TYPES": REQUEST_TYPES, "STALE_HOURS": STALE_HOURS,
-        "ams_linked": os.path.exists(os.path.abspath(AMS_DB)),
+        "ams_linked": bool(AMS_URL and AMS_TOKEN) or os.path.exists(os.path.abspath(AMS_DB)),
     }
 
 

@@ -286,8 +286,44 @@ def test_demo_data():
     assert b"procurement" in c.get("/tickets?scope=planned").data.lower()
 
 
+def test_ams_over_the_web():
+    """On separate servers the asset details come from the AMS's read-only API; if it is asleep, tickets still work."""
+    m.DB = os.path.join(tempfile.mkdtemp(), "w.db")
+    m.AMS_DB = os.path.join(tempfile.mkdtemp(), "none.db")
+    m.init_db()
+    c = m.app.test_client()
+    post(c, "/setup", {"name": "Admin", "username": "admin", "password": "adminpass1"}, "/setup")
+    login(c, "admin", "adminpass1")
+    fake = {"AMS-00013": {"tag": "AMS-00013", "name": "L1-PC-04", "status": "Faulty", "building": "CSE Block", "room": "Computer Lab 1"}}
+    asked = []
+
+    def ams_http(path):
+        asked.append(path)
+        if path.startswith("/api/v1/assets?"):
+            return {"count": 1, "items": list(fake.values())}
+        return fake.get(path.rsplit("/", 1)[1])
+
+    real = (m.AMS_URL, m.AMS_TOKEN, m.ams_http)
+    m.AMS_URL, m.AMS_TOKEN, m.ams_http = "https://ams.example", "tok", ams_http
+    m._choices_cache.update(at=0, rows=[])
+    try:
+        assert b"AMS-00013" in c.get("/tickets/new").data and any(p.startswith("/api/v1/assets?") for p in asked)
+        r = post(c, "/tickets/new", {"title": "System not working", "asset_tag": "AMS-00013"}, "/tickets/new")
+        tid = int(r.location.rsplit("/", 1)[1])
+        page = c.get(f"/tickets/{tid}").get_data(as_text=True)
+        assert "CSE Block · Computer Lab 1" in page and "L1-PC-04" in page
+        assert b"not found in the AMS" in c.get(f"/tickets/{int(post(c, '/tickets/new', {'title': 'x', 'asset_tag': 'NOPE', 'location': 'Lab'}, '/tickets/new').location.rsplit('/', 1)[1])}").data
+        m.ams_http = lambda path: None  # the AMS is asleep
+        m._choices_cache.update(at=0, rows=[])
+        assert c.get("/tickets/new").status_code == 200
+        assert post(c, "/tickets/new", {"title": "Still works", "asset_tag": "AMS-00013", "location": "Lab 1"}, "/tickets/new").status_code == 302
+    finally:
+        m.AMS_URL, m.AMS_TOKEN, m.ams_http = real
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
     test_demo_data()
+    test_ams_over_the_web()
     print("ok")

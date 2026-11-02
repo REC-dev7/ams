@@ -25,7 +25,9 @@
 <form id="audit" method="post" action="{{ url_for('room_audit', rid=room.id) }}" class="card" style="margin-bottom:14px;border-left:4px solid var(--gold)">{{ csrf }}
   <h2>Stock verification</h2>
   <p class="muted" style="margin-top:0">Walk the room and tick every item you can physically see (scan its QR label to find it). Unticked items are logged as <b>not found</b>.</p>
-  <div class="actions">
+  <label>Equipment here that is not on this list <span class="muted" style="font-weight:500">(one per line: its tag or old code if it has one, otherwise a short description)</span>
+    <textarea name="extra" rows="2" placeholder="AMS-00123&#10;HP printer on the side table, no label"></textarea></label>
+  <div class="actions" style="margin-top:10px">
     <button class="btn">Save stock check</button>
     <button type="button" class="btn ghost" onclick="document.querySelectorAll('.found').forEach(c => c.checked = true)">Tick all</button>
     <a class="btn ghost" href="{{ url_for('room', rid=room.id) }}">Cancel</a>

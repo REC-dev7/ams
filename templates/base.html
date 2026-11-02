@@ -28,6 +28,13 @@
       <a href="{{ url_for('loans') }}" class="{{ 'on' if ep == 'loans' }}" {{ 'aria-current=page' if ep == 'loans' }}>{{ icon('<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>') }}Lent out</a>
       <a href="{{ url_for('register') }}" class="{{ 'on' if ep == 'register' }}" {{ 'aria-current=page' if ep == 'register' }}>{{ icon('<path d="M4 4h16v16H4zM4 9h16M9 9v11"/>') }}Stock register</a>
       <a href="{{ url_for('labels') }}" class="{{ 'on' if ep == 'labels' }}" {{ 'aria-current=page' if ep == 'labels' }}>{{ icon('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>') }}QR labels</a>
+      <a href="{{ url_for('reminders') }}" class="{{ 'on' if ep == 'reminders' }}" {{ 'aria-current=page' if ep == 'reminders' }}>{{ icon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>') }}Reminders</a>
+      {% if can('move') %}
+      <a href="{{ url_for('findings') }}" class="{{ 'on' if ep == 'findings' }}" {{ 'aria-current=page' if ep == 'findings' }}>{{ icon('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v3M11 14h.01"/>') }}Stock check findings</a>
+      {% endif %}
+      {% if can('docs') %}
+      <a href="{{ url_for('contracts') }}" class="{{ 'on' if ep == 'contracts' }}" {{ 'aria-current=page' if ep == 'contracts' }}>{{ icon('<path d="M9 12l2 2 4-4M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/>') }}Contracts</a>
+      {% endif %}
       {% if can('docs') %}
       <a href="{{ url_for('documents') }}" class="{{ 'on' if ep == 'documents' }}" {{ 'aria-current=page' if ep == 'documents' }}>{{ icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>') }}Documents</a>
       {% endif %}

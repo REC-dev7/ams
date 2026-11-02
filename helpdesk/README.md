@@ -20,6 +20,12 @@ An older database is upgraded in place when the app starts.
 
 ## AMS link
 
+Two ways, depending on where the apps run:
+
+- **Same computer:** the Helpdesk reads the AMS database file read-only (below).
+- **Separate servers (Render):** set `AMS_URL` (the AMS address) and `AMS_API_TOKEN` (the same secret as on the AMS) and it asks the AMS's read-only API instead. See `../docs/API.md`.
+
+
 Tickets can name an AMS asset tag. The helpdesk reads `../ams.db` read-only (nothing is written to it).
 Another location: `set AMS_DB=C:\path\to\ams.db` before starting. No AMS found: tickets still work,
 the tag is just text.

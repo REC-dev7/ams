@@ -9,7 +9,7 @@
   <div class="card flush" id="buildings">
     <h2>Buildings</h2>
     <form method="post" action="{{ url_for('settings_add', kind='buildings') }}" class="filters" style="padding:0 18px">{{ csrf }}
-      <input name="name" placeholder="Building name" required><input name="code" placeholder="Code (CSE)" style="min-width:90px;width:110px"><button class="btn">Add</button>
+      <input name="name" placeholder="Building name" required><input name="code" placeholder="Code (CSE)" style="min-width:90px;width:110px"><input name="campus" placeholder="Campus (optional)" style="width:150px"><button class="btn">Add</button>
     </form>
     <table><thead><tr><th>Name</th><th>Code</th><th class="num">Rooms</th><th></th></tr></thead><tbody>
       {% for b in buildings %}<tr><td>{{ b.name }}</td><td class="mono">{{ b.code or '' }}</td><td class="num">{{ b.n }}</td><td>{{ del('buildings', b) }}</td></tr>

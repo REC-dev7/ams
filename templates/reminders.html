@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% block title %}Reminders{% endblock %}
+{% macro box(title, n, link=None) %}<div class="kpi {{ 'caution' if n }}"><div class="label">{{ title }}</div><div class="value">{{ n }}</div>{% if link %}<div class="sub"><a href="{{ link }}">open</a></div>{% endif %}</div>{% endmacro %}
+{% block body %}
+<div class="head"><div><h1>Reminders</h1><div class="muted">Everything that is coming up or overdue, in one place.</div></div></div>
+<div class="kpis">
+  {{ box('Warranty ending (60 days)', warranty|length) }}{{ box('Service due (30 days)', service|length, url_for('services')) }}
+  {{ box('Contracts ending (60 days)', contracts|length, url_for('contracts')) if can('docs') }}{{ box('Licences renewing (60 days)', licences|length, url_for('licences')) if can('docs') }}
+  {{ box('Low stock', low|length, url_for('stock')) }}{{ box('Lent items overdue', loans|length, url_for('loans')) }}
+  {{ box('Rooms to verify', rooms|length) }}{{ box('Retirement in progress', retiring|length) }}
+  {% if can('move') %}{{ box('Open stock-check findings', findings, url_for('findings')) }}{% endif %}
+</div>
+{% macro list(title, rows) %}{% if rows %}<div class="card flush" style="margin-bottom:16px"><h2>{{ title }}</h2><ul class="plain" style="padding:0 18px 14px">{{ caller() }}</ul></div>{% endif %}{% endmacro %}
+{% call list('Warranty ending', warranty) %}{% for a in warranty %}<li><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }} <span class="muted">ends {{ a.warranty_until }} · {{ a.building }} {{ a.room }}</span></li>{% endfor %}{% endcall %}
+{% call list('Service due', service) %}{% for a in service %}<li><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }} <span class="muted">due {{ a.next_service_due }}</span>{% if a.next_service_due < today %} <span class="chip plain bad">overdue</span>{% endif %}</li>{% endfor %}{% endcall %}
+{% call list('Contracts ending', contracts) %}{% for c in contracts %}<li><span class="chip plain">{{ c.kind }}</span> {{ c.reference or c.vendor or 'contract' }} <span class="muted">ends {{ c.end_date }} · {{ c.n }} asset(s)</span>{% if c.end_date < today %} <span class="chip plain bad">ended</span>{% endif %}</li>{% endfor %}{% endcall %}
+{% call list('Licences renewing', licences) %}{% for l in licences %}<li>{{ l.product }} <span class="muted">renews {{ l.renewal_date }}</span>{% if l.renewal_date < today %} <span class="chip plain bad">expired</span>{% endif %}</li>{% endfor %}{% endcall %}
+{% call list('Low stock', low) %}{% for s in low %}<li><a href="{{ url_for('stock_item', iid=s.id) }}">{{ s.name }}</a> <span class="muted">{{ '%g'|format(s.balance) }} {{ s.unit }} left, reorder at {{ '%g'|format(s.min_level) }}</span></li>{% endfor %}{% endcall %}
+{% call list('Lent items overdue', loans) %}{% for l in loans %}<li><a class="mono" href="{{ url_for('asset', aid=l.id) }}">{{ l.tag }}</a> {{ l.name }} <span class="muted">with {{ l.person }}, due {{ l.due_date }}</span></li>{% endfor %}{% endcall %}
+{% call list('Rooms with assets not verified in 12 months', rooms) %}{% for r in rooms %}<li><a href="{{ url_for('room', rid=r.id, audit=1) }}">{{ r.building }} · {{ r.name }}</a> <span class="muted">{{ r.n }} asset(s) to check</span></li>{% endfor %}{% endcall %}
+{% call list('Retirement waiting', retiring) %}{% for a in retiring %}<li><a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }} <span class="muted">{{ a.lifecycle_stage }}</span></li>{% endfor %}{% endcall %}
+{% endblock %}

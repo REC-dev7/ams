@@ -1,0 +1,25 @@
+{% extends "base.html" %}{% block title %}Stock check findings{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Stock check findings</h1><div class="muted">Things a stock check found that the register doesn't match: an asset seen in the wrong room, or equipment nobody has registered. Each needs a decision, and the decision is recorded.</div></div></div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Found</th><th>What</th><th>Where it was seen</th><th>Decision</th></tr></thead>
+  <tbody>
+  {% for f in rows %}
+    <tr><td>{{ f.found_on }}<div class="muted" style="font-size:12px">{{ f.by_name or '' }}</div></td>
+      <td>{% if f.kind == 'Wrong location' %}<span class="chip plain warn">Wrong place</span> <a class="mono" href="{{ url_for('asset', aid=f.asset_id) }}">{{ f.tag }}</a> {{ f.asset_name }}<div class="muted" style="font-size:12px">listed in {{ f.home_room or 'no room' }}</div>
+        {% else %}<span class="chip plain bad">Not registered</span> <b>{{ f.description }}</b>{% endif %}</td>
+      <td>{{ f.building }} · {{ f.room }}</td>
+      <td>{% if f.status == 'Open' %}
+        <form method="post" action="{{ url_for('finding_resolve', fid=f.id) }}" class="actions">{{ csrf }}
+          <select name="how" aria-label="Decision" style="width:auto">
+            {% if f.kind == 'Wrong location' %}<option value="move">Update the record: it is here now</option><option value="keep">Keep the record: it is only here for now</option>{% endif %}
+            <option value="dismiss">Dismiss (not equipment / counted already)</option></select>
+          <input name="note" placeholder="Why" required style="min-width:150px">
+          <button class="btn sm">Save</button>
+          {% if f.kind == 'Unregistered' and can('edit') %}<a class="btn sm ghost" href="{{ url_for('asset_new', room=f.room_id) }}">Add as an asset</a>{% endif %}
+        </form>
+        {% else %}<span class="chip {{ 'good' if f.status == 'Resolved' else '' }}">{{ f.status }}</span><div class="muted" style="font-size:12px">{{ f.resolution }}</div>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="4" class="empty">Nothing found yet. When you verify a room you can list equipment that isn't on its list.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

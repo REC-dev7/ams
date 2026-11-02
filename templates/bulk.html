@@ -1,0 +1,32 @@
+{% extends "base.html" %}{% block title %}{{ label }}{% endblock %}
+{% block body %}
+<div class="head"><div><div class="crumbs"><a href="{{ url_for('assets') }}">Assets</a></div><h1>{{ label }}</h1>
+  <div class="muted">{{ 'Result for each asset. Anything that failed was left as it was.' if step == 'run' else 'Preview: nothing has been changed yet.' }} {{ ok }} of {{ results|length }} {{ 'done' if step == 'run' else 'would go through' }}.</div></div></div>
+<div class="card flush"><div class="table-wrap"><table>
+  <thead><tr><th>Asset</th><th>{{ 'Result' if step == 'run' else 'Would happen' }}</th></tr></thead>
+  <tbody>{% for a, good, msg in results %}
+    <tr><td>{% if a %}<a class="mono" href="{{ url_for('asset', aid=a.id) }}">{{ a.tag }}</a> {{ a.name }}{% else %}<span class="muted">unavailable</span>{% endif %}</td>
+      <td><span class="chip plain {{ 'good' if good else 'bad' }}">{{ 'OK' if good else 'Skipped' }}</span> {{ msg }}</td></tr>
+  {% endfor %}</tbody>
+</table></div></div>
+{% if step != 'run' %}
+<form method="post" action="{{ url_for('assets_bulk') }}" class="card stack" style="margin-top:16px">{{ csrf }}
+  <input type="hidden" name="step" value="run"><input type="hidden" name="action" value="{{ action }}">
+  {% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+  {% if action != 'verify' %}
+  <div class="form-grid">
+    {% if action == 'department' %}<label>Department <select name="department_id"><option value="">Choose…</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if fields.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></label>{% endif %}
+    <label>Date it happened <input type="date" name="event_date" value="{{ fields.event_date or today }}" max="{{ today }}"></label>
+    <label class="full">Why? * <input name="reason" required value="{{ fields.reason }}" placeholder="e.g. new lab setup"></label>
+    <label class="full">Approval reference (if any) <input name="approval_ref" value="{{ fields.approval_ref }}"></label>
+  </div>
+  <p class="muted" style="font-size:13px;margin:0">Fill this in and press <b>Preview again</b> to see what would happen, then <b>Do it</b>.</p>
+  {% endif %}
+  <div class="actions">
+    {% if action != 'verify' %}<button class="btn ghost" name="step" value="preview">Preview again</button>{% endif %}
+    <button class="btn" name="step" value="run" {{ 'disabled' if not ok }}>Do it for the {{ ok }} that would go through</button>
+    <a class="btn ghost" href="{{ url_for('assets') }}">Cancel</a>
+  </div>
+</form>
+{% else %}<div class="actions" style="margin-top:16px"><a class="btn" href="{{ url_for('assets') }}">Back to assets</a></div>{% endif %}
+{% endblock %}

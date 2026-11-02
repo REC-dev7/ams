@@ -162,6 +162,20 @@ CREATE TABLE IF NOT EXISTS licences (
   id INTEGER PRIMARY KEY, product TEXT NOT NULL, vendor TEXT, licence_type TEXT, metric TEXT, quantity INTEGER NOT NULL DEFAULT 1,
   in_use INTEGER, start_date TEXT, renewal_date TEXT, support_end TEXT, key_ref TEXT, cost REAL, po_number TEXT,
   department_id INTEGER REFERENCES departments(id), notes TEXT, archived_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS check_findings (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, room_id INTEGER REFERENCES rooms(id), asset_id INTEGER REFERENCES assets(id) ON DELETE CASCADE,
+  description TEXT, found_on TEXT NOT NULL, found_by INTEGER REFERENCES users(id), status TEXT NOT NULL DEFAULT 'Open',
+  resolution TEXT, resolved_by INTEGER REFERENCES users(id), resolved_at TEXT);
+CREATE TABLE IF NOT EXISTS contracts (
+  id INTEGER PRIMARY KEY, kind TEXT NOT NULL, vendor TEXT, reference TEXT, start_date TEXT, end_date TEXT, cost REAL,
+  department_id INTEGER REFERENCES departments(id), notes TEXT, archived_at TEXT, created_by INTEGER REFERENCES users(id),
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS contract_assets (
+  contract_id INTEGER NOT NULL REFERENCES contracts(id) ON DELETE CASCADE, asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+  PRIMARY KEY (contract_id, asset_id));
+CREATE TABLE IF NOT EXISTS asset_interfaces (
+  id INTEGER PRIMARY KEY, asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE, name TEXT NOT NULL, mac TEXT, ip TEXT,
+  vlan TEXT, connected_to TEXT, notes TEXT, added_by INTEGER REFERENCES users(id), added_at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 
 app = Flask(__name__)
@@ -205,9 +219,10 @@ MIGRATIONS = {
                ("acquisition_basis", "TEXT"), ("po_number", "TEXT"), ("invoice_number", "TEXT"), ("indent_no", "TEXT"), ("cpr_no", "TEXT"),
                ("grn_no", "TEXT"), ("stock_register_ref", "TEXT"), ("cost_basis", "TEXT"), ("tax_included", "INTEGER"),
                ("legacy_code", "TEXT"), ("archived_at", "TEXT"), ("archive_reason", "TEXT"), ("import_batch_id", "INTEGER"),
-               ("source_row", "INTEGER"), ("source_json", "TEXT")],
+               ("source_row", "INTEGER"), ("source_json", "TEXT"), ("rack", "TEXT")],
     "activity": [("event_type", "TEXT"), ("event_date", "TEXT"), ("reason", "TEXT"), ("approval_ref", "TEXT")],
     "users": [("extra_roles", "TEXT"), ("department_id", "INTEGER")],
+    "buildings": [("campus", "TEXT")],
 }
 AUDIT_DAYS = 365  # stock must be physically verified at least yearly
 
@@ -627,9 +642,11 @@ def room_audit(rid):
     for a in missing:
         db().execute("UPDATE assets SET verification='Not found' WHERE id=?", (a["id"],))
         log(a["id"], "Not found in stock check", etype="Not found", event_date=today)
+    others = record_findings(rid, request.form.get("extra", ""), today)  # equipment seen here that the list doesn't have
     db().commit()
     msg = f"Stock check saved: {len(found & in_room.keys())} verified"
-    flash(msg + (f", {len(missing)} not found (see each asset's activity)" if missing else "."), "error" if missing else "ok")
+    flash(msg + (f", {len(missing)} not found (see each asset's activity)" if missing else "")
+          + (f", {others} other find(s) waiting for a decision under Stock check findings" if others else "") + ".", "error" if (missing or others) else "ok")
     return redirect(url_for("room", rid=rid))
 
 
@@ -664,14 +681,14 @@ LEFT JOIN departments ud ON ud.id=a.using_dept_id"""
 
 FIELDS = ["tag", "name", "category_id", "room_id", "brand", "model", "serial_no", "ip_address", "mac_address",
           "purchase_date", "warranty_until", "cost", "vendor", "notes", "managing_dept_id", "owning_dept_id", "condition",
-          "legacy_code", "location_unresolved", "acquisition_basis", "po_number", "invoice_number", "indent_no", "cpr_no",
+          "legacy_code", "rack", "location_unresolved", "acquisition_basis", "po_number", "invoice_number", "indent_no", "cpr_no",
           "grn_no", "stock_register_ref", "cost_basis", "tax_included"]
 LABELS = {"tag": "Tag", "name": "Name", "category_id": "Category", "room_id": "Room", "brand": "Brand", "model": "Model",
           "serial_no": "Serial no", "ip_address": "IP", "mac_address": "MAC", "purchase_date": "Purchase date",
           "warranty_until": "Warranty", "cost": "Cost", "vendor": "Vendor", "notes": "Notes", "managing_dept_id": "Managing dept",
-          "owning_dept_id": "Owning dept", "condition": "Condition", "legacy_code": "Old asset code",
+          "owning_dept_id": "Owning dept", "condition": "Condition", "legacy_code": "Old asset code", "rack": "Rack / position",
           "location_unresolved": "Location unresolved", "acquisition_basis": "Acquired by", "po_number": "PO no",
-          "invoice_number": "Invoice no", "indent_no": "Indent no", "cpr_no": "CPR no", "grn_no": "GRN no",
+          "invoice_number": "Invoice no", "indent_no": "Indent no", "cpr_no": "CPR no (payment receipt)", "grn_no": "GRN no",
           "stock_register_ref": "Stock register ref", "cost_basis": "Cost is", "tax_included": "Tax included"}
 
 
@@ -1300,7 +1317,7 @@ def settings_add(kind):
         if not name:
             raise ValueError("Name is required")
         if kind == "buildings":
-            db().execute("INSERT INTO buildings(name, code) VALUES (?,?)", (name, f.get("code", "").strip().upper() or None))
+            db().execute("INSERT INTO buildings(name, code, campus) VALUES (?,?,?)", (name, f.get("code", "").strip().upper() or None, f.get("campus", "").strip() or None))
         elif kind == "rooms":
             if not opt_int(f.get("building_id")):
                 raise ValueError("Pick a building")
@@ -1614,6 +1631,9 @@ ams_docs.init(sys.modules[__name__])
 import ams_extras  # noqa: E402
 
 ams_extras.init(sys.modules[__name__])
+import ams_more  # noqa: E402
+
+ams_more.init(sys.modules[__name__])
 init_db()
 if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
     seed_demo()
