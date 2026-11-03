@@ -24,11 +24,11 @@
       <a href="{{ url_for('locations') }}" class="{{ 'on' if ep in ('locations', 'room') }}" {{ 'aria-current=page' if ep in ('locations', 'room') }}>{{ icon('<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/>') }}Buildings &amp; rooms</a>
       <a href="{{ url_for('assets') }}" class="{{ 'on' if ep in ('assets', 'asset', 'asset_new', 'asset_edit') }}" {{ 'aria-current=page' if ep in ('assets', 'asset', 'asset_new', 'asset_edit') }}>{{ icon('<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>') }}Assets</a>
       <a href="{{ url_for('issues') }}" class="{{ 'on' if ep == 'issues' }}" {{ 'aria-current=page' if ep == 'issues' }}>{{ icon('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>') }}Issues</a>
-      <a href="{{ url_for('services') }}" class="{{ 'on' if ep == 'services' }}" {{ 'aria-current=page' if ep == 'services' }}>{{ icon('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>') }}Service log</a>
+      {% if not limited %}<a href="{{ url_for('services') }}" class="{{ 'on' if ep == 'services' }}" {{ 'aria-current=page' if ep == 'services' }}>{{ icon('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>') }}Service log</a>{% endif %}
       <a href="{{ url_for('loans') }}" class="{{ 'on' if ep == 'loans' }}" {{ 'aria-current=page' if ep == 'loans' }}>{{ icon('<path d="M16 3h5v5M21 3l-7 7M8 21H3v-5M3 21l7-7"/>') }}Lent out</a>
-      <a href="{{ url_for('register') }}" class="{{ 'on' if ep == 'register' }}" {{ 'aria-current=page' if ep == 'register' }}>{{ icon('<path d="M4 4h16v16H4zM4 9h16M9 9v11"/>') }}Stock register</a>
-      <a href="{{ url_for('labels') }}" class="{{ 'on' if ep == 'labels' }}" {{ 'aria-current=page' if ep == 'labels' }}>{{ icon('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>') }}QR labels</a>
-      <a href="{{ url_for('reminders') }}" class="{{ 'on' if ep == 'reminders' }}" {{ 'aria-current=page' if ep == 'reminders' }}>{{ icon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>') }}Reminders</a>
+      {% if not limited %}<a href="{{ url_for('register') }}" class="{{ 'on' if ep == 'register' }}" {{ 'aria-current=page' if ep == 'register' }}>{{ icon('<path d="M4 4h16v16H4zM4 9h16M9 9v11"/>') }}Stock register</a>{% endif %}
+      {% if not limited %}<a href="{{ url_for('labels') }}" class="{{ 'on' if ep == 'labels' }}" {{ 'aria-current=page' if ep == 'labels' }}>{{ icon('<rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h4v4h-4"/>') }}QR labels</a>{% endif %}
+      {% if not limited %}<a href="{{ url_for('reminders') }}" class="{{ 'on' if ep == 'reminders' }}" {{ 'aria-current=page' if ep == 'reminders' }}>{{ icon('<path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0"/>') }}Reminders</a>{% endif %}
       {% if can('move') %}
       <a href="{{ url_for('findings') }}" class="{{ 'on' if ep == 'findings' }}" {{ 'aria-current=page' if ep == 'findings' }}>{{ icon('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3M11 8v3M11 14h.01"/>') }}Stock check findings</a>
       {% endif %}
@@ -38,11 +38,11 @@
       {% if can('docs') %}
       <a href="{{ url_for('documents') }}" class="{{ 'on' if ep == 'documents' }}" {{ 'aria-current=page' if ep == 'documents' }}>{{ icon('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>') }}Documents</a>
       {% endif %}
-      <a href="{{ url_for('stock') }}" class="{{ 'on' if ep in ('stock', 'stock_item') }}" {{ 'aria-current=page' if ep in ('stock', 'stock_item') }}>{{ icon('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>') }}Consumables</a>
+      {% if not limited %}<a href="{{ url_for('stock') }}" class="{{ 'on' if ep in ('stock', 'stock_item') }}" {{ 'aria-current=page' if ep in ('stock', 'stock_item') }}>{{ icon('<path d="M21 8l-9-5-9 5 9 5z"/><path d="M3 8v8l9 5 9-5V8M12 13v8"/>') }}Consumables</a>{% endif %}
       {% if can('docs') %}
       <a href="{{ url_for('licences') }}" class="{{ 'on' if ep == 'licences' }}" {{ 'aria-current=page' if ep == 'licences' }}>{{ icon('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4"/>') }}Software licences</a>
       {% endif %}
-      <a href="{{ url_for('reports') }}" class="{{ 'on' if ep == 'reports' }}" {{ 'aria-current=page' if ep == 'reports' }}>{{ icon('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>') }}Reports</a>
+      {% if not limited %}<a href="{{ url_for('reports') }}" class="{{ 'on' if ep == 'reports' }}" {{ 'aria-current=page' if ep == 'reports' }}>{{ icon('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>') }}Reports</a>{% endif %}
       {% if can('purchase') %}
       <a href="{{ url_for('batches') }}" class="{{ 'on' if ep == 'batches' }}" {{ 'aria-current=page' if ep == 'batches' }}>{{ icon('<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>') }}Purchase batches</a>
       {% endif %}
@@ -50,12 +50,12 @@
       <div class="sep">Admin</div>
       <a href="{{ url_for('imports') }}" class="{{ 'on' if ep in ('imports', 'import_new', 'import_map', 'import_values', 'import_preview') }}" {{ 'aria-current=page' if ep in ('imports', 'import_new', 'import_map', 'import_values', 'import_preview') }}>{{ icon('<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>') }}Imports</a>
       <a href="{{ url_for('settings') }}" class="{{ 'on' if ep == 'settings' }}" {{ 'aria-current=page' if ep == 'settings' }}>{{ icon('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>') }}Locations &amp; categories</a>
-      <a href="{{ url_for('users') }}" class="{{ 'on' if ep == 'users' }}" {{ 'aria-current=page' if ep == 'users' }}>{{ icon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>') }}Users</a>
+      {% if can('users') %}<a href="{{ url_for('users') }}" class="{{ 'on' if ep == 'users' }}" {{ 'aria-current=page' if ep == 'users' }}>{{ icon('<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>') }}Users</a>{% endif %}
       {% endif %}
     </nav>
     <a class="switch" href="{{ other_url or 'http://' ~ request.host.split(':')[0] ~ ':5002/' }}" title="Open REC Helpdesk in a new tab" target="_blank" rel="noopener"><span>Open <span class="gold">Helpdesk</span><small>Report or fix a problem</small></span> ↗</a>
     <div class="me">
-      <b>{{ user.name }}</b><span>{{ user.role|capitalize }}</span>
+      <b>{{ user.name }}</b><span>{{ ROLE_LABEL[user.role] }}</span>
       <div class="row">
         <a href="{{ url_for('account') }}">Account</a>
         <form method="post" action="{{ url_for('logout') }}">{{ csrf }}<button>Sign out</button></form>

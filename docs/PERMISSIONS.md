@@ -8,7 +8,7 @@ Every check is made on the server. A hidden button is never the only protection:
 |---|---|---|---|---|---|---|---|---|
 | Super admin | every department | yes | yes | yes | yes | yes | yes | yes |
 | Admin | every department | yes | yes | yes | yes | yes | yes | yes |
-| System admin | every department |  |  |  |  |  | yes | yes |
+| System admin | every department |  |  |  |  |  |  | yes |
 | Purchase | every department |  |  |  |  | yes |  | yes |
 | HOD | own department(s) only |  | yes | yes |  |  |  | yes |
 | Lab assistant | own department(s) only |  | yes |  |  |  |  |  |

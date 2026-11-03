@@ -34,7 +34,7 @@ CAPS = {"edit": ("super_admin", "admin", "technician"),                      # a
         "approve": ("super_admin", "admin", "hod"),                           # approve a retirement
         "admin": ("super_admin", "admin"),                                    # masters, imports, tags, archive
         "purchase": ("super_admin", "admin", "purchase"),                     # purchase references and documents
-        "users": ("super_admin", "system_admin", "admin"),                             # accounts
+        "users": ("super_admin", "admin"),                                    # accounts: an admin manages roles below admin; only a super admin touches admin-level ones
         "docs": ("super_admin", "admin", "purchase", "technician", "hod", "auditor", "system_admin")}  # may open purchase documents
 STATUSES = ["Working", "Faulty", "Under service", "In store", "Scrapped", "Lost"]  # derived from stage + condition, kept for filters
 LIFECYCLE = ["Requested", "Ordered", "Received (pending inspection)", "In stock", "Deployed", "Under maintenance", "Retirement proposed",
@@ -409,6 +409,16 @@ def guard():
     g.user = q("SELECT * FROM users WHERE id=?", (session.get("uid"),), one=True)
     if not g.user:
         return redirect(url_for("login", next=request.full_path))
+    if is_limited() and request.endpoint in LIMITED_BLOCKED:
+        abort(403)
+
+
+# a custodian (end user) works with their own assets and issues; the rest of the menu is for people who manage equipment
+LIMITED_BLOCKED = {"services", "register", "labels", "reminders", "stock", "stock_item", "reports"}
+
+
+def is_limited():
+    return bool(g.get("user")) and roles_of(g.user) == {"custodian"}
 
 
 def roles_of(u):
@@ -473,7 +483,7 @@ def template_globals():
     user = g.get("user")
     return {
         "other_url": os.environ.get("OTHER_APP_URL"),
-        "user": user,
+        "user": user, "limited": is_limited(),
         "csrf": Markup(f'<input type="hidden" name="csrf" value="{token}">'),
         "can": lambda *caps: any(allowed(c) for c in caps),
         "LIFECYCLE": LIFECYCLE, "CONDITIONS": CONDITIONS, "VERIFICATION": VERIFICATION, "ACQ_BASIS": ACQ_BASIS, "COST_BASIS": COST_BASIS,

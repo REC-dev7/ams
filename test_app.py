@@ -211,19 +211,62 @@ def test_flow():
     login(c, "purchase")
     assert c.get(f"/assets/{ece}").status_code == 200 and c.get(f"/assets/{ece}/edit").status_code == 403
 
-    # roles: only a super admin hands out admin roles; extra roles add abilities
+    # accounts: an admin manages the roles below admin; only a super admin creates, changes or removes admin-level accounts
+    for who in ("sysadmin", "purchase", "hod", "tech", "staff"):
+        login(c, who)
+        assert c.get("/users").status_code == 403, who
+        assert b'href="/users"' not in c.get("/").data, who
+        assert post(c, "/users/add", {"name": "New", "username": "newadmin", "role": "custodian", "password": "newpass123"}, "/").status_code == 403, who
     login(c, "admin")
-    r = post(c, "/users/add", {"name": "New", "username": "newadmin", "role": "admin", "password": "newpass123"}, "/users")
-    assert row("SELECT 1 FROM users WHERE username='newadmin'") is None
+    assert c.get("/users").status_code == 200 and b'href="/users"' in c.get("/").data
+    for top in ("admin", "super_admin", "system_admin"):  # an admin can't hand out admin-level roles, not even as an extra role
+        post(c, "/users/add", {"name": "New", "username": "newadmin", "role": top, "password": "newpass123"}, "/users")
+        post(c, "/users/add", {"name": "New", "username": "newadmin", "role": "custodian", "extra_roles": [top], "password": "newpass123"}, "/users")
+        assert row("SELECT 1 FROM users WHERE username='newadmin'") is None, top
     post(c, "/users/add", {"name": "Dual", "username": "dual", "role": "custodian", "extra_roles": ["lab_assistant"], "department_id": dept("ECE"), "password": "dualpass123"}, "/users")
     assert row("SELECT extra_roles FROM users WHERE username='dual'")["extra_roles"] == "lab_assistant"
+    dual = row("SELECT id FROM users WHERE username='dual'")["id"]
+    post(c, f"/users/{dual}/update", {"role": "hod", "department_id": dept("ECE")}, "/users")  # changing a lower role is fine
+    assert row("SELECT role FROM users WHERE id=?", dual)["role"] == "hod"
+    post(c, f"/users/{dual}/update", {"role": "admin"}, "/users")  # promoting to admin is not
+    assert row("SELECT role FROM users WHERE id=?", dual)["role"] == "hod"
+    post(c, f"/users/{dual}/update", {"role": "custodian", "extra_roles": ["lab_assistant"], "department_id": dept("ECE")}, "/users")
+    sup, adm = row("SELECT id FROM users WHERE username='super'")["id"], row("SELECT id FROM users WHERE username='sysadmin'")["id"]
+    for victim in (sup, adm):  # and can't remove or change admin-level accounts
+        post(c, f"/users/{victim}/delete", {}, "/users")
+        post(c, f"/users/{victim}/update", {"role": "custodian", "password": "hijacked123"}, "/users")
+        assert row("SELECT role FROM users WHERE id=?", victim)["role"] in ("super_admin", "system_admin")
+    me = row("SELECT id FROM users WHERE username='admin'")["id"]
+    post(c, f"/users/{me}/delete", {}, "/users")
+    assert row("SELECT 1 FROM users WHERE username='admin'")  # nobody deletes themselves
+    login(c, "super")
+    post(c, "/users/add", {"name": "New", "username": "newadmin", "role": "admin", "password": "newpass123"}, "/users")
+    assert row("SELECT 1 FROM users WHERE username='newadmin'")
+    victim = row("SELECT id FROM users WHERE username='newadmin'")["id"]
+    post(c, f"/users/{victim}/delete", {}, "/users")  # the super admin may remove an admin
+    assert row("SELECT 1 FROM users WHERE username='newadmin'") is None
+    me = row("SELECT id FROM users WHERE username='super'")["id"]
+    post(c, f"/users/{me}/delete", {}, "/users")
+    assert row("SELECT 1 FROM users WHERE username='super'")
     login(c, "dual", "dualpass123")
     assert c.get(f"/assets/{ece}").status_code == 200 and c.get(f"/assets/{cse}").status_code == 404
     assert post(c, f"/assets/{ece}/custody", {"to": "Person", "person": "Dr. Z", "reason": "loan", "expected": str(row("SELECT id FROM custody WHERE asset_id=? AND ended_at IS NULL", ece)["id"])}, f"/assets/{ece}").status_code == 302
     assert row("SELECT custodian FROM assets WHERE id=?", ece)["custodian"] == "Dr. Z"
-    login(c, "super")
-    post(c, "/users/add", {"name": "New", "username": "newadmin", "role": "admin", "password": "newpass123"}, "/users")
-    assert row("SELECT 1 FROM users WHERE username='newadmin'")
+
+    # a plain custodian gets a short menu and can't open the manager pages by typing the address; one with an extra role gets the full menu
+    login(c, "staff")
+    home = c.get("/").get_data(as_text=True)
+    assert "Issues" in home and "Lent out" in home and "Assets" in home
+    for hidden in ('href="/reports"', 'href="/register"', 'href="/services"', 'href="/labels"', 'href="/reminders"', 'href="/stock"'):
+        assert hidden not in home, hidden
+    for url in ("/reports", "/register", "/services", "/labels", "/reminders", "/stock"):
+        assert c.get(url).status_code == 403, url
+    assert c.get("/assets").status_code == 200 and c.get("/issues").status_code == 200 and c.get("/loans").status_code == 200
+    assert b"QR label" not in c.get(f"/assets/{cse}").data
+    login(c, "dual", "dualpass123")
+    assert c.get("/reports").status_code == 200 and b'href="/reports"' in c.get("/").data
+    login(c, "hod")
+    assert c.get("/reports").status_code == 200 and b'href="/reports"' in c.get("/").data
 
 
 def row_all(sql, *args):
@@ -557,9 +600,11 @@ def test_specs_stock_licences_reports():
     assert row("SELECT COALESCE(SUM(qty),0) b FROM stock_movements WHERE item_id=?", iid)["b"] == 4
     assert row("SELECT COUNT(*) n FROM stock_movements WHERE item_id=?", iid)["n"] == 3
     other = int(post(c, "/stock/new", {"name": "ECE soldering wire", "unit": "m", "department_id": dept("ECE")}, "/stock").location.rsplit("/", 1)[1])
-    login(c, "staff")
+    login(c, "hod")
     assert c.get(f"/stock/{iid}").status_code == 200 and c.get(f"/stock/{other}").status_code == 404  # CSE user: no ECE stock
-    assert mv(kind="Received", qty="5").status_code == 403 and post(c, "/stock/new", {"name": "x"}, "/stock").status_code == 403
+    login(c, "staff")  # a plain custodian doesn't get the consumables pages at all
+    assert c.get(f"/stock/{iid}").status_code == 403 and c.get("/stock").status_code == 403
+    assert post(c, f"/stock/{iid}/move", {"kind": "Received", "qty": "5"}, "/").status_code == 403 and post(c, "/stock/new", {"name": "x"}, "/").status_code == 403
     login(c, "lab")
     assert mv(kind="Received", qty="5").status_code == 302
 
@@ -598,8 +643,10 @@ def test_specs_stock_licences_reports():
     assert "Mechanical" not in scoped and "Old network switch" not in scoped and "for your department only" in scoped
     login(c, "auditor")
     assert c.get("/reports").status_code == 200
-    login(c, "staff")
+    login(c, "hod")
     assert c.get("/reports").status_code == 200 and "Imports compared" not in c.get("/reports").get_data(as_text=True)
+    login(c, "staff")
+    assert c.get("/reports").status_code == 403
     assert full >= 1
 
 
