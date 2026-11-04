@@ -564,55 +564,25 @@ def ordinal(n):
 
 @app.route("/")
 def dashboard():
+    """A summary, not a list: how many tickets are in each state, and where the open ones are. The lists live under All tickets."""
     where, sargs = scope()
-    cut = (datetime.now() - timedelta(hours=STALE_HOURS)).strftime(FMT)
+    by_status = {r["k"]: r["n"] for r in q(f"SELECT t.status k, COUNT(*) n FROM tickets t WHERE 1=1{where} GROUP BY t.status", sargs)}
 
-    def count(cond, *extra):
-        return q(f"SELECT COUNT(*) n FROM tickets t WHERE {cond}{where}", [*extra, *sargs], one=True)["n"]
+    def bars(col, limit=8, live=True):
+        rows = q(f"SELECT COALESCE({col}, 'Not set') k, COUNT(*) n FROM tickets t WHERE {LIVE_SQL if live else '1=1'}{where} GROUP BY 1 ORDER BY n DESC LIMIT {limit}", sargs)
+        top = max([r["n"] for r in rows] or [1])
+        return [{"label": r["k"], "n": r["n"], "pct": max(4, round(r["n"] * 100 / top))} for r in rows]
 
-    stats = {
-        "open": count(LIVE_SQL),
-        "unassigned": count(f"{LIVE_SQL} AND t.assigned_to IS NULL"),
-        "overdue": count(f"{OPEN} AND t.due_at < ?", now()),
-        "stale": count(f"{OPEN} AND t.updated_at < ?", cut),
-        "urgent": count(f"{LIVE_SQL} AND t.priority IN ('Critical','High')"),
-        "resolved_week": count("t.status IN ('Resolved','Closed') AND t.resolved_at >= ?", (datetime.now() - timedelta(days=7)).strftime(FMT)),
-        "planned": count("t.status='Planned'"),
-    }
-    work = q(TICKET_SQL + f" WHERE {LIVE_SQL}{where} ORDER BY {PRIO_ORDER}, {DUE_ORDER} LIMIT 8", sargs)
-    if g.user["role"] in MANAGE:
-        mine = q(TICKET_SQL + f" WHERE {LIVE_SQL} AND t.assigned_to=? ORDER BY {PRIO_ORDER}, {DUE_ORDER}", (g.user["id"],))
-        team_q = q(TICKET_SQL + f" WHERE {LIVE_SQL} AND t.assigned_to IS NULL AND t.team=? ORDER BY {PRIO_ORDER}, {DUE_ORDER}",
-                   (g.user["team"],)) if g.user["team"] else []
-    else:
-        mine = q(TICKET_SQL + f" WHERE {LIVE_SQL} AND t.raised_by=? ORDER BY {PRIO_ORDER}, {DUE_ORDER}", (g.user["id"],))
-        team_q = []
-    needs_you = q(TICKET_SQL + " WHERE t.raised_by=? AND t.status IN ('Waiting on requester','Resolved') ORDER BY t.updated_at", (g.user["id"],))
-    stale = q(TICKET_SQL + f" WHERE {OPEN} AND t.updated_at < ?{where} ORDER BY t.updated_at LIMIT 6", [cut, *sargs])
-    by_cat = q(f"SELECT category k, COUNT(*) n FROM tickets t WHERE {LIVE_SQL}{where} GROUP BY category ORDER BY n DESC", sargs)
-    top = max([r["n"] for r in by_cat] or [1])
-    insights = None
-    if g.user["role"] in (*MANAGE, "auditor"):
-        since = (datetime.now() - timedelta(days=30)).strftime(FMT)
-        rows = q("SELECT created_at, first_response_at, resolved_at, due_at FROM tickets WHERE created_at >= ?", (since,))
-
-        def hours(a, b):
-            return (datetime.strptime(b, FMT) - datetime.strptime(a, FMT)).total_seconds() / 3600
-
-        resp = [hours(r["created_at"], r["first_response_at"]) for r in rows if r["first_response_at"]]
-        fix = [hours(r["created_at"], r["resolved_at"]) for r in rows if r["resolved_at"]]
-        sla = [r["resolved_at"] <= r["due_at"] for r in rows if r["resolved_at"] and r["due_at"]]
-        insights = {
-            "raised": len(rows), "fixed": len(fix),
-            "response": round(sum(resp) / len(resp), 1) if resp else None, "fix": round(sum(fix) / len(fix), 1) if fix else None,
-            "sla": round(100 * sum(sla) / len(sla)) if sla else None,
-            "places": q("""SELECT location, category, COUNT(*) n FROM tickets WHERE location IS NOT NULL AND created_at >= ?
-                           GROUP BY location, category HAVING n >= 2 ORDER BY n DESC, location LIMIT 5""", (since,)),
-            "teams": q(f"SELECT team k, COUNT(*) n FROM tickets t WHERE {LIVE_SQL} GROUP BY team ORDER BY n DESC"),
-            "outages": q(TICKET_SQL + f" WHERE {LIVE_SQL} AND (SELECT COUNT(*) FROM tickets k WHERE k.parent_id=t.id) >= 1 ORDER BY t.id DESC LIMIT 5"),
-        }
-    return render_template("dashboard.html", stats=stats, work=work, mine=mine, team_q=team_q, needs_you=needs_you, stale=stale,
-                           insights=insights, by_cat=[{"label": r["k"], "n": r["n"], "pct": round(r["n"] * 100 / top)} for r in by_cat])
+    stats = {"open": sum(by_status.get(k, 0) for k in LIVE), **{k: by_status.get(k, 0) for k in STATUSES}}
+    months = {}
+    for r in q(f"SELECT substr(created_at, 1, 7) m, COUNT(*) n FROM tickets t WHERE 1=1{where} GROUP BY m ORDER BY m DESC LIMIT 6", sargs):
+        months[r["m"]] = [r["n"], 0]
+    for r in q(f"SELECT substr(resolved_at, 1, 7) m, COUNT(*) n FROM tickets t WHERE resolved_at IS NOT NULL{where} GROUP BY m", sargs):
+        if r["m"] in months:
+            months[r["m"]][1] = r["n"]
+    peak = max([n for v in months.values() for n in v] or [1])
+    trend = [{"label": m, "raised": v[0], "closed": v[1], "r": round(v[0] * 100 / peak), "c": round(v[1] * 100 / peak)} for m, v in sorted(months.items())]
+    return render_template("dashboard.html", stats=stats, trend=trend, by_priority=bars("t.priority"), by_cat=bars("t.category"), by_team=bars("t.team"))
 
 
 def ticket_filters():

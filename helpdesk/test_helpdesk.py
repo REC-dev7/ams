@@ -183,7 +183,7 @@ def test_flow():
     for k in kids:
         post(c, f"/tickets/{k}/link", {"parent": str(pid)}, f"/tickets/{k}")
     assert row("SELECT COUNT(*) n FROM tickets WHERE parent_id=?", pid)["n"] == 2
-    assert b"outage" in c.get("/tickets").data and b"Active outages" in c.get("/").data
+    assert b"outage" in c.get("/tickets").data and b"Active by team" in c.get("/").data
     assert b"Pick another ticket" in c.get(post(c, f"/tickets/{pid}/link", {"parent": str(kids[0])}, f"/tickets/{pid}").location, follow_redirects=True).data
     post(c, f"/tickets/{pid}/resolve", {"resolution": "Switch rebooted", "also_linked": "1"}, f"/tickets/{pid}")
     assert row("SELECT COUNT(*) n FROM tickets WHERE parent_id=? AND status='Resolved'", pid)["n"] == 2
@@ -199,7 +199,7 @@ def test_flow():
     with m.app.app_context():
         m.db().execute("UPDATE tickets SET updated_at='2020-01-01 00:00:00' WHERE id=?", (third,))
         m.db().commit()
-    assert f"HD-{third:04d}".encode() in c.get("/tickets?stale=1").data and b"No update 24h" in c.get("/").data
+    assert f"HD-{third:04d}".encode() in c.get("/tickets?stale=1").data and b"Waiting on requester" in c.get("/").data
 
     # search by HD number; CSV export is for admin and auditor only
     assert f"HD-{tid:04d}".encode() in c.get(f"/tickets?scope=all&q=HD-{tid:04d}").data
@@ -283,7 +283,7 @@ def test_demo_data():
         for page in ["/", "/tickets?scope=all", "/tickets/1", "/tickets/new" if role != "auditor" else "/account"]:
             assert c.get(page).status_code in (200, 404), (u, page)
     login(c, "admin", "demo-admin-2026")
-    assert b"in 30 days" in c.get("/tickets?scope=all").data and b"Active outages" in c.get("/").data
+    assert b"in 30 days" in c.get("/tickets?scope=all").data and b"Active by priority" in c.get("/").data
     assert b"procurement" in c.get("/tickets?scope=planned").data.lower()
 
 
