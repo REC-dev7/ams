@@ -10,11 +10,11 @@
 </div>
 
 <div class="kpis">
-  <div class="kpi"><div class="label">Tickets raised</div><div class="value">{{ stats.total }}</div><div class="sub">{{ stats.live }} still open</div></div>
-  <div class="kpi {{ 'alert' if stats.overdue }}"><div class="label">Overdue now</div><div class="value">{{ stats.overdue }}</div><div class="sub">past their fix-by time</div></div>
-  <div class="kpi {{ 'caution' if stats.sla is not none and stats.sla < 80 }}"><div class="label">Fixed on time</div><div class="value">{{ stats.sla ~ '%' if stats.sla is not none else '—' }}</div><div class="sub">of {{ stats.sla_n }} with a fix-by time</div></div>
-  <div class="kpi"><div class="label">First reply (median)</div><div class="value">{{ stats.first ~ ' h' if stats.first is not none else '—' }}</div><div class="sub">from raised to IT's first answer</div></div>
-  <div class="kpi"><div class="label">Time to fix (median)</div><div class="value">{{ stats.fix ~ ' h' if stats.fix is not none else '—' }}</div><div class="sub">{{ stats.fixed }} fixed</div></div>
+  <div class="kpi"><div class="label">Tickets raised</div><div class="value">{{ stats.total }}</div></div>
+  <div class="kpi {{ 'alert' if stats.overdue }}"><div class="label">Overdue now</div><div class="value">{{ stats.overdue }}</div></div>
+  <div class="kpi {{ 'caution' if stats.sla is not none and stats.sla < 80 }}"><div class="label">Fixed on time</div><div class="value">{{ stats.sla ~ '%' if stats.sla is not none else '—' }}</div></div>
+  <div class="kpi"><div class="label">First reply (median)</div><div class="value">{{ stats.first ~ ' h' if stats.first is not none else '—' }}</div></div>
+  <div class="kpi"><div class="label">Time to fix (median)</div><div class="value">{{ stats.fix ~ ' h' if stats.fix is not none else '—' }}</div></div>
 </div>
 
 <div class="grid g2" style="margin-bottom:16px">

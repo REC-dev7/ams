@@ -7,19 +7,19 @@
 </div>
 
 <div class="kpis">
-  <a class="kpi" href="{{ url_for('assets') }}"><div class="label">Total assets</div><div class="value">{{ stats.total }}</div><div class="sub">excl. scrapped, incl. parts</div></a>
+  <a class="kpi" href="{{ url_for('assets') }}"><div class="label">Total assets</div><div class="value">{{ stats.total }}</div></a>
   <a class="kpi" href="{{ url_for('assets', status='Working') }}"><div class="label">Working</div><div class="value">{{ stats.working }}</div>
-    <div class="sub">{{ (stats.working * 100 / stats.total)|round|int if stats.total else 0 }}% of fleet</div></a>
-  <a class="kpi {{ 'alert' if stats.down }}" href="{{ url_for('assets', status='Faulty') }}"><div class="label">Faulty / under service</div><div class="value">{{ stats.down }}</div><div class="sub">need attention</div></a>
-  <a class="kpi {{ 'alert' if stats.open_issues }}" href="{{ url_for('issues') }}"><div class="label">Open issues</div><div class="value">{{ stats.open_issues }}</div><div class="sub">reported, not fixed</div></a>
-  {% if not limited %}<a class="kpi {{ 'caution' if stats.service_due }}" href="{{ url_for('services') }}"><div class="label">Service due</div><div class="value">{{ stats.service_due }}</div><div class="sub">overdue or next 30 days</div></a>{% endif %}
-  <div class="kpi {{ 'caution' if stats.warranty }}"><div class="label">Warranty expiring</div><div class="value">{{ stats.warranty }}</div><div class="sub">next 60 days</div></div>
-  {% if not limited %}<a class="kpi {{ 'caution' if stats.audit_due }}" href="{{ url_for('register') }}"><div class="label">Stock check due</div><div class="value">{{ stats.audit_due }}</div><div class="sub">not verified in 12 months</div></a>{% endif %}
-  <a class="kpi {{ 'alert' if stats.loans_overdue }}" href="{{ url_for('loans') }}"><div class="label">Lent out</div><div class="value">{{ stats.loans }}</div><div class="sub">{{ stats.loans_overdue }} overdue</div></a>
-  <a class="kpi {{ 'caution' if stats.retiring }}" href="{{ url_for('assets', stage='Retirement proposed') }}"><div class="label">Retiring</div><div class="value">{{ stats.retiring }}</div><div class="sub">proposed, approved or awaiting disposal</div></a>
-  <a class="kpi {{ 'alert' if stats.no_location }}" href="{{ url_for('assets') }}"><div class="label">Location unknown</div><div class="value">{{ stats.no_location }}</div><div class="sub">to find or confirm</div></a>
-  <a class="kpi {{ 'alert' if stats.no_dept }}" href="{{ url_for('assets') }}"><div class="label">No department</div><div class="value">{{ stats.no_dept }}</div><div class="sub">needs a managing department</div></a>
-  {% if not limited %}<a class="kpi" href="{{ url_for('register') }}"><div class="label">Book value</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(stats.book) }}</div><div class="sub">of ₹{{ '{:,.0f}'.format(stats.value) }} purchase cost</div></a>{% endif %}
+</a>
+  <a class="kpi {{ 'alert' if stats.down }}" href="{{ url_for('assets', status='Faulty') }}"><div class="label">Faulty / under service</div><div class="value">{{ stats.down }}</div></a>
+  <a class="kpi {{ 'alert' if stats.open_issues }}" href="{{ url_for('issues') }}"><div class="label">Open issues</div><div class="value">{{ stats.open_issues }}</div></a>
+  {% if not limited %}<a class="kpi {{ 'caution' if stats.service_due }}" href="{{ url_for('services') }}"><div class="label">Service due</div><div class="value">{{ stats.service_due }}</div></a>{% endif %}
+  <div class="kpi {{ 'caution' if stats.warranty }}"><div class="label">Warranty expiring</div><div class="value">{{ stats.warranty }}</div></div>
+  {% if not limited %}<a class="kpi {{ 'caution' if stats.audit_due }}" href="{{ url_for('register') }}"><div class="label">Stock check due</div><div class="value">{{ stats.audit_due }}</div></a>{% endif %}
+  <a class="kpi {{ 'alert' if stats.loans_overdue }}" href="{{ url_for('loans') }}"><div class="label">Lent out</div><div class="value">{{ stats.loans }}</div></a>
+  <a class="kpi {{ 'caution' if stats.retiring }}" href="{{ url_for('assets', stage='Retirement proposed') }}"><div class="label">Retiring</div><div class="value">{{ stats.retiring }}</div></a>
+  <a class="kpi {{ 'alert' if stats.no_location }}" href="{{ url_for('assets') }}"><div class="label">Location unknown</div><div class="value">{{ stats.no_location }}</div></a>
+  <a class="kpi {{ 'alert' if stats.no_dept }}" href="{{ url_for('assets') }}"><div class="label">No department</div><div class="value">{{ stats.no_dept }}</div></a>
+  {% if not limited %}<a class="kpi" href="{{ url_for('register') }}"><div class="label">Book value</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(stats.book) }}</div></a>{% endif %}
 </div>
 
 {% set colors = {'Working': 'var(--good)', 'Faulty': 'var(--bad)', 'Under service': '#e8a317', 'In store': '#8a93a6', 'Scrapped': '#3b4252', 'Lost': '#b42318'} %}

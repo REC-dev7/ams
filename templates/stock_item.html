@@ -2,7 +2,7 @@
 {% block body %}
 <div class="head"><div><div class="crumbs"><a href="{{ url_for('stock') }}">Stock</a></div><h1>{{ s.name }}</h1>
   <div class="muted">{{ s.dept or 'All departments' }}{% if s.room %} · stored in {{ s.room }}{% endif %}</div></div>
-  <div class="kpi" style="min-width:180px"><div class="label">In stock</div><div class="value">{{ '%g'|format(s.balance) }} <small>{{ s.unit }}</small></div><div class="sub">reorder at {{ '%g'|format(s.min_level) }}</div></div></div>
+  <div class="kpi" style="min-width:180px"><div class="label">In stock</div><div class="value">{{ '%g'|format(s.balance) }} <small>{{ s.unit }}</small></div></div></div>
 {% if can('move') %}
 <div class="card" style="margin-bottom:16px"><h2>Record a movement</h2>
   <form method="post" action="{{ url_for('stock_move', iid=s.id) }}" class="stack">{{ csrf }}

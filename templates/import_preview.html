@@ -12,12 +12,12 @@
 {% if not done %}{{ wizard_steps(4) }}{% endif %}
 
 <div class="kpis">
-  <div class="kpi"><div class="label">Rows read</div><div class="value">{{ s.read }}</div><div class="sub">empty lines ignored</div></div>
-  <div class="kpi"><div class="label">Assets to add</div><div class="value">{{ s.create_assets }}</div><div class="sub">each gets its own permanent tag</div></div>
-  <div class="kpi {{ 'caution' if s.create_batches }}"><div class="label">Purchase batches</div><div class="value">{{ s.create_batches }}</div><div class="sub">{{ s.batch_units }} units not yet confirmed</div></div>
-  <div class="kpi {{ 'caution' if s.dups }}"><div class="label">Already in the register</div><div class="value">{{ s.dups }}</div><div class="sub">skipped unless you choose Update</div></div>
-  <div class="kpi {{ 'alert' if s.errors }}"><div class="label">Rows with errors</div><div class="value">{{ s.errors }}</div><div class="sub">left out</div></div>
-  <div class="kpi"><div class="label">Skipped</div><div class="value">{{ s.skip }}</div><div class="sub">{{ s.update }} to update</div></div>
+  <div class="kpi"><div class="label">Rows read</div><div class="value">{{ s.read }}</div></div>
+  <div class="kpi"><div class="label">Assets to add</div><div class="value">{{ s.create_assets }}</div></div>
+  <div class="kpi {{ 'caution' if s.create_batches }}"><div class="label">Purchase batches</div><div class="value">{{ s.create_batches }}</div></div>
+  <div class="kpi {{ 'caution' if s.dups }}"><div class="label">Already in the register</div><div class="value">{{ s.dups }}</div></div>
+  <div class="kpi {{ 'alert' if s.errors }}"><div class="label">Rows with errors</div><div class="value">{{ s.errors }}</div></div>
+  <div class="kpi"><div class="label">Skipped</div><div class="value">{{ s.skip }}</div></div>
 </div>
 
 {% if checks %}

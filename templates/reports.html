@@ -21,8 +21,8 @@
 
 <h2 style="margin:20px 0 8px">Money</h2>
 <div class="kpis">
-  <div class="kpi"><div class="label">Recorded purchase cost</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(cost_total) }}</div><div class="sub">{{ cost_n }} assets with a per-unit or line cost. Whole-purchase values are not added to each asset.</div></div>
-  <div class="kpi"><div class="label">Book value today</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(book_total) }}</div><div class="sub">straight-line over the category life. Finance must approve these rules before the figure is used officially.</div></div>
+  <div class="kpi"><div class="label">Recorded purchase cost</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(cost_total) }}</div></div>
+  <div class="kpi"><div class="label">Book value today</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(book_total) }}</div></div>
 </div>
 
 {% if imports %}

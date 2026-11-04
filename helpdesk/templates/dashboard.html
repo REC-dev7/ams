@@ -28,12 +28,12 @@
 </div>
 
 <div class="kpis">
-  <a class="kpi" href="{{ url_for('tickets') }}"><div class="label">Open tickets</div><div class="value">{{ stats.open }}</div><div class="sub">waiting or being fixed</div></a>
-  <a class="kpi {{ 'alert' if stats.overdue }}" href="{{ url_for('tickets', overdue=1) }}"><div class="label">Overdue</div><div class="value">{{ stats.overdue }}</div><div class="sub">past their fix-by time</div></a>
-  <a class="kpi {{ 'alert' if stats.stale }}" href="{{ url_for('tickets', stale=1) }}"><div class="label">No update {{ STALE_HOURS }}h</div><div class="value">{{ stats.stale }}</div><div class="sub">going quiet, chase these</div></a>
-  <a class="kpi {{ 'caution' if stats.unassigned }}" href="{{ url_for('tickets', unassigned=1) }}"><div class="label">Unassigned</div><div class="value">{{ stats.unassigned }}</div><div class="sub">no technician yet</div></a>
-  <a class="kpi {{ 'alert' if stats.urgent }}" href="{{ url_for('tickets', priority='Critical') }}"><div class="label">High / critical</div><div class="value">{{ stats.urgent }}</div><div class="sub">fix first</div></a>
-  <a class="kpi" href="{{ url_for('tickets', scope='closed') }}"><div class="label">Fixed this week</div><div class="value">{{ stats.resolved_week }}</div><div class="sub">{{ stats.planned }} on procurement list</div></a>
+  <a class="kpi" href="{{ url_for('tickets') }}"><div class="label">Open tickets</div><div class="value">{{ stats.open }}</div></a>
+  <a class="kpi {{ 'alert' if stats.overdue }}" href="{{ url_for('tickets', overdue=1) }}"><div class="label">Overdue</div><div class="value">{{ stats.overdue }}</div></a>
+  <a class="kpi {{ 'alert' if stats.stale }}" href="{{ url_for('tickets', stale=1) }}"><div class="label">No update {{ STALE_HOURS }}h</div><div class="value">{{ stats.stale }}</div></a>
+  <a class="kpi {{ 'caution' if stats.unassigned }}" href="{{ url_for('tickets', unassigned=1) }}"><div class="label">Unassigned</div><div class="value">{{ stats.unassigned }}</div></a>
+  <a class="kpi {{ 'alert' if stats.urgent }}" href="{{ url_for('tickets', priority='Critical') }}"><div class="label">High / critical</div><div class="value">{{ stats.urgent }}</div></a>
+  <a class="kpi" href="{{ url_for('tickets', scope='closed') }}"><div class="label">Fixed this week</div><div class="value">{{ stats.resolved_week }}</div></a>
 </div>
 
 {% if needs_you %}
@@ -78,10 +78,10 @@
 {% if insights %}
 <h2 style="margin:24px 0 10px">Last 30 days</h2>
 <div class="kpis">
-  <div class="kpi"><div class="label">Raised</div><div class="value">{{ insights.raised }}</div><div class="sub">{{ insights.fixed }} fixed</div></div>
-  <div class="kpi"><div class="label">First reply</div><div class="value">{{ insights.response if insights.response is not none else '—' }}{% if insights.response is not none %}<small> h</small>{% endif %}</div><div class="sub">average time to first IT reply</div></div>
-  <div class="kpi"><div class="label">Time to fix</div><div class="value">{{ insights.fix if insights.fix is not none else '—' }}{% if insights.fix is not none %}<small> h</small>{% endif %}</div><div class="sub">average, raised to resolved</div></div>
-  <div class="kpi {{ 'alert' if insights.sla is not none and insights.sla < 70 }}"><div class="label">Fixed in time</div><div class="value">{{ insights.sla if insights.sla is not none else '—' }}{% if insights.sla is not none %}<small>%</small>{% endif %}</div><div class="sub">met their fix-by time</div></div>
+  <div class="kpi"><div class="label">Raised</div><div class="value">{{ insights.raised }}</div></div>
+  <div class="kpi"><div class="label">First reply</div><div class="value">{{ insights.response if insights.response is not none else '—' }}{% if insights.response is not none %}<small> h</small>{% endif %}</div></div>
+  <div class="kpi"><div class="label">Time to fix</div><div class="value">{{ insights.fix if insights.fix is not none else '—' }}{% if insights.fix is not none %}<small> h</small>{% endif %}</div></div>
+  <div class="kpi {{ 'alert' if insights.sla is not none and insights.sla < 70 }}"><div class="label">Fixed in time</div><div class="value">{{ insights.sla if insights.sla is not none else '—' }}{% if insights.sla is not none %}<small>%</small>{% endif %}</div></div>
 </div>
 <div class="grid g3">
   <div class="card flush">
