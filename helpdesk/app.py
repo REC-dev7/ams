@@ -333,7 +333,17 @@ def ago(ts):
     return "just now" if mins < 2 else f"{mins}m ago" if mins < 120 else f"{mins // 60}h ago" if mins < 2880 else f"{mins // 1440}d ago"
 
 
-app.jinja_env.globals.update(overdue=overdue, due_text=due_text, is_stale=is_stale, ago=ago)
+def age_text(t):
+    """How old a ticket is ('5h', '3d'); for a finished one, how long it took."""
+    if not t["created_at"]:
+        return ""
+    end = datetime.strptime(t["resolved_at"], FMT) if t["status"] in ("Resolved", "Closed") and t["resolved_at"] else datetime.now()
+    mins = max(int((end - datetime.strptime(t["created_at"], FMT)).total_seconds() // 60), 0)
+    span = f"{mins // 1440}d" if mins >= 2880 else f"{mins // 60}h" if mins >= 120 else f"{mins}m"
+    return f"took {span}" if end is not None and t["status"] in ("Resolved", "Closed") and t["resolved_at"] else span
+
+
+app.jinja_env.globals.update(overdue=overdue, due_text=due_text, is_stale=is_stale, ago=ago, age_text=age_text)
 app.jinja_env.globals["static_v"] = int(os.path.getmtime(os.path.join(HERE, "static", "style.css")))  # cache-bust: CSS/JS cached for a day
 
 

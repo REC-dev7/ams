@@ -31,22 +31,23 @@
 </form>
 
 <div class="card flush"><div class="table-wrap"><table>
-  <thead><tr><th>No.</th><th>Priority</th><th>Problem</th><th>Where</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
+  <thead><tr><th>Ticket no.</th><th>Description</th><th>Status</th><th>Technician</th><th>Priority</th><th>Fix by</th><th>Age</th><th>Where</th></tr></thead>
   <tbody>
   {% for t in rows %}
     <tr>
-      <td><a class="mono" href="{{ url_for('ticket', tid=t.id) }}">HD-{{ '%04d'|format(t.id) }}</a></td>
-      <td>{{ priority(t.priority) }}</td>
+      <td style="white-space:nowrap"><a class="mono" href="{{ url_for('ticket', tid=t.id) }}">HD-{{ '%04d'|format(t.id) }}</a></td>
       <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a>
         <div class="muted" style="font-size:12px">{{ t.category }} · {{ t.team }} · by {{ t.requester_name or t.raiser or '—' }}</div>
         <div class="tags">{{ tags(t) }}</div></td>
-      <td>{{ t.location or '—' }}{% if t.department %}<div class="muted" style="font-size:12px">{{ t.department }}</div>{% endif %}
-        {% if t.asset_tag %}<div class="mono muted" style="font-size:12px">{{ t.asset_tag }}</div>{% endif %}</td>
       <td>{{ status(t.status) }}</td>
       <td>{{ t.assignee or '—' }}</td>
+      <td>{{ priority(t.priority) }}</td>
       <td>{{ due(t) }}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap">{{ age_text(t) }}</td>
+      <td>{{ t.location or '—' }}{% if t.department %}<div class="muted" style="font-size:12px">{{ t.department }}</div>{% endif %}
+        {% if t.asset_tag %}<div class="mono muted" style="font-size:12px">{{ t.asset_tag }}</div>{% endif %}</td>
     </tr>
-  {% else %}<tr><td colspan="7" class="empty">No tickets match.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="8" class="empty">No tickets match.</td></tr>{% endfor %}
   </tbody>
 </table></div></div>
 {{ pager(pg) }}

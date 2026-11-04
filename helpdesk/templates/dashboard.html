@@ -2,19 +2,21 @@
 {% block title %}Dashboard{% endblock %}
 {% macro row(t, hint='') %}
 <tr>
-  <td>{{ priority(t.priority) }}</td>
+  <td style="white-space:nowrap"><a class="mono" href="{{ url_for('ticket', tid=t.id) }}">HD-{{ '%04d'|format(t.id) }}</a></td>
   <td><a href="{{ url_for('ticket', tid=t.id) }}"><b>{{ t.title }}</b></a>
-    <div class="muted" style="font-size:12px"><span class="mono">HD-{{ '%04d'|format(t.id) }}</span> · {{ t.category }}{% if t.location %} · {{ t.location }}{% endif %}</div>
+    <div class="muted" style="font-size:12px">{{ t.category }}{% if t.location %} · {{ t.location }}{% endif %}</div>
     <div class="tags">{{ tags(t) }}</div></td>
   <td>{{ status(t.status) }}{% if hint %}<div style="font-size:12px;font-weight:600">{{ hint }}</div>{% endif %}</td>
   <td>{{ t.assignee or '—' }}</td>
+  <td>{{ priority(t.priority) }}</td>
   <td>{{ due(t) }}</td>
+  <td class="muted" style="font-size:12px;white-space:nowrap">{{ age_text(t) }}</td>
 </tr>
 {% endmacro %}
 {% macro table(rows, empty='Nothing here.') %}
 <div class="table-wrap"><table>
-  <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
-  <tbody>{% for t in rows %}{{ row(t) }}{% else %}<tr><td colspan="5" class="empty">{{ empty }}</td></tr>{% endfor %}</tbody>
+  <thead><tr><th>Ticket no.</th><th>Description</th><th>Status</th><th>Technician</th><th>Priority</th><th>Fix by</th><th>Age</th></tr></thead>
+  <tbody>{% for t in rows %}{{ row(t) }}{% else %}<tr><td colspan="7" class="empty">{{ empty }}</td></tr>{% endfor %}</tbody>
 </table></div>
 {% endmacro %}
 {% block body %}
@@ -40,7 +42,7 @@
 <div class="card flush" style="margin-bottom:16px;border-left:4px solid var(--bad)">
   <h2>Waiting for you <span class="muted">({{ needs_you|length }})</span></h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Priority</th><th>Ticket</th><th>Status</th><th>Technician</th><th>Fix by</th></tr></thead>
+    <thead><tr><th>Ticket no.</th><th>Description</th><th>Status</th><th>Technician</th><th>Priority</th><th>Fix by</th><th>Age</th></tr></thead>
     <tbody>{% for t in needs_you %}{{ row(t, 'Reply needed: IT asked you a question' if t.status == 'Waiting on requester' else 'Fixed? Please confirm or reopen') }}{% endfor %}</tbody>
   </table></div>
 </div>
