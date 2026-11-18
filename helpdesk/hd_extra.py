@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS maintenance (
   id INTEGER PRIMARY KEY, title TEXT NOT NULL, description TEXT, category TEXT, priority TEXT DEFAULT 'Low',
   location_id INTEGER REFERENCES locations(id), location TEXT, asset_tag TEXT, every_days INTEGER NOT NULL,
   next_due TEXT NOT NULL, active INTEGER DEFAULT 1, created_by INTEGER REFERENCES users(id), last_ticket_id INTEGER, last_run TEXT);
+CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT);
 """
 pending = []  # sends still running; wait() lets tests collect them
 last_check = {"at": 0.0}  # when the due-jobs check last ran (module level so tests can reset it)
@@ -132,10 +133,27 @@ def init(A):
         if t["request_type"] == "Fault":
             ams_event(t, "opened")
 
+    def auto_assign(tid):
+        """When switched on: give a new ticket to the technician in its team with the fewest unfinished tickets."""
+        t = fresh(tid)
+        if A.app_settings_cache.get("auto_assign") != "1" or t["assigned_to"]:
+            return
+        tech = q("""SELECT u.id, u.name FROM users u WHERE u.role='technician' AND u.team=?
+                    ORDER BY (SELECT COUNT(*) FROM tickets x WHERE x.assigned_to=u.id AND x.status IN ('Open','In progress','Waiting on requester')), u.id
+                    LIMIT 1""", (t["team"],), one=True)
+        if tech:
+            db().execute("UPDATE tickets SET assigned_to=? WHERE id=?", (tech["id"], tid))
+            A.note(tid, f"Assigned to {tech['name']} (automatically: fewest open tickets in {t['team']})", response=False)
+            db().commit()
+
+    def after_create(tid):
+        auto_assign(tid)
+        on_new(fresh(tid))
+
     def wrapped_new(f, logged=False):
         r = new_ticket(f, logged)
         if r and not logged:
-            on_new(fresh(r[0]))
+            after_create(r[0])
         return r
 
     def wrapped_status(t, new, text=None, **cols):
@@ -161,6 +179,43 @@ def init(A):
                      f"{t['title']}\n\nPlace: {t['location'] or '-'}\nPriority: {t['priority']}\n\n{link(t)}\n")
 
     A.new_ticket, A.set_status, A.note = wrapped_new, wrapped_status, wrapped_note
+
+    # ---------- service rules: fix-by hours, quiet limit, auto-assign (admin edits them; no code change needed) ----------
+
+    defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0"}
+    A.app_settings_cache = dict(defaults)
+
+    @app.before_request
+    def load_rules():
+        # read each request so every worker sees an admin's change at once; it is one tiny query
+        try:
+            saved = dict(db().execute("SELECT key, value FROM app_settings").fetchall())
+        except sqlite3.Error:
+            saved = {}
+        A.app_settings_cache = {**defaults, **saved}
+        for p in A.SLA_HOURS:
+            A.SLA_HOURS[p] = int(A.app_settings_cache[f"sla_{p}"])
+        A.STALE_HOURS = int(A.app_settings_cache["stale_hours"])
+
+    @app.context_processor
+    def rules_ctx():
+        return {"rules": A.app_settings_cache}
+
+    @app.route("/settings/rules", methods=["POST"])
+    @role("admin")
+    def rules_save():
+        f, new = request.form, {}
+        for key in [f"sla_{p}" for p in A.PRIORITIES] + ["stale_hours"]:
+            v = A.opt_int(f.get(key))
+            if not v or v > 2000:
+                flash("Hours must be whole numbers from 1 to 2000.", "error")
+                return redirect(url_for("settings"))
+            new[key] = str(v)
+        new["auto_assign"] = "1" if f.get("auto_assign") else "0"
+        db().executemany("INSERT INTO app_settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", list(new.items()))
+        db().commit()
+        flash("Service rules saved. New fix-by times apply to tickets raised from now on.", "ok")
+        return redirect(url_for("settings"))
 
     # ---------- notifications page (admin) ----------
 
@@ -251,19 +306,23 @@ def init(A):
             g.user = before
         if r:
             db().execute("UPDATE tickets SET source='Planned maintenance' WHERE id=?", (r[0],))
-            on_new(fresh(r[0]))
+            after_create(r[0])
         return r[0] if r else None
 
     def run_due():
         today = date.today()
         for m in q("SELECT * FROM maintenance WHERE active=1 AND next_due<=?", (today.isoformat(),)):
-            tid = make_ticket(m)
             nxt = date.fromisoformat(m["next_due"])
             while nxt <= today:  # a long gap raises one ticket, not a pile
                 nxt += timedelta(days=m["every_days"])
-            db().execute("UPDATE maintenance SET next_due=?, last_ticket_id=COALESCE(?, last_ticket_id), last_run=? WHERE id=?",
-                         (nxt.isoformat(), tid, today.isoformat(), m["id"]))
-        db().commit()
+            # claim the job first: with several server workers only the one whose update lands raises the ticket
+            claimed = db().execute("UPDATE maintenance SET next_due=?, last_run=? WHERE id=? AND next_due=?",
+                                   (nxt.isoformat(), today.isoformat(), m["id"], m["next_due"])).rowcount
+            db().commit()
+            if claimed:
+                tid = make_ticket(m)
+                db().execute("UPDATE maintenance SET last_ticket_id=COALESCE(?, last_ticket_id) WHERE id=?", (tid, m["id"]))
+                db().commit()
 
     @app.before_request
     def maintenance_tick():
@@ -275,9 +334,14 @@ def init(A):
 
     def send_reminders():
         """Once a day: overdue and quiet tickets to the Chat space, and each technician their own by email.
-        notify_log is the record of 'already sent today', so a restart doesn't send twice."""
-        if not (chat_on() or mail_on()) or q("SELECT 1 FROM notify_log WHERE channel LIKE 'reminder%' AND at >= ?", (date.today().isoformat(),), one=True):
+        The date of the last one is claimed in app_settings first, so a restart or a second server worker doesn't send it twice."""
+        if not (chat_on() or mail_on()):
             return
+        today = date.today().isoformat()
+        db().execute("INSERT OR IGNORE INTO app_settings(key, value) VALUES ('reminder_sent', '')")
+        if not db().execute("UPDATE app_settings SET value=? WHERE key='reminder_sent' AND value!=?", (today, today)).rowcount:
+            return
+        db().commit()
         cut = (datetime.now() - timedelta(hours=A.STALE_HOURS)).strftime(A.FMT)
         rows = q(A.TICKET_SQL + f" WHERE {A.OPEN} AND (t.due_at < ? OR t.updated_at < ?) ORDER BY t.due_at IS NULL, t.due_at", (A.now(), cut))
         if not rows:

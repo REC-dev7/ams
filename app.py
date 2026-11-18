@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import sqlite3
+import subprocess
 import sys
 from datetime import date, datetime, timedelta
 from functools import wraps
@@ -179,9 +180,11 @@ CREATE TABLE IF NOT EXISTS asset_interfaces (
 """
 
 app = Flask(__name__)
-if not os.path.exists(KEY_FILE):
-    with open(KEY_FILE, "w") as fh:
+try:  # "x" = create only if missing, so two server workers starting together can't write different keys
+    with open(KEY_FILE, "x") as fh:
         fh.write(secrets.token_hex(32))
+except FileExistsError:
+    pass
 with open(KEY_FILE) as fh:
     app.secret_key = fh.read().strip()
 # own cookie name: browsers share cookies across ports on localhost, so apps on :5000/:5002 would overwrite each other
@@ -330,6 +333,16 @@ MAX_PHOTO, MAX_PHOTOS, PER_PAGE = 4 * 1024 * 1024, 5, 50
 IMAGE_MAGIC = {b"\xff\xd8\xff": ".jpg", b"\x89PNG\r\n\x1a\n": ".png", b"GIF87a": ".gif", b"GIF89a": ".gif"}
 
 
+def virus_free(path):
+    """Optional ClamAV check on an uploaded file: on when UPLOAD_SCAN=1. Fails closed: if the scanner is missing or errors, the file is refused."""
+    if os.environ.get("UPLOAD_SCAN") != "1":
+        return True
+    try:
+        return subprocess.run(["clamscan", "--no-summary", path], capture_output=True, timeout=120).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def save_photos(field="photos"):
     """Store up to 5 images from the form under random names. Returns (saved filenames, number refused)."""
     saved, refused = [], 0
@@ -347,9 +360,13 @@ def save_photos(field="photos"):
         name = secrets.token_hex(16) + ext
         with open(os.path.join(UPLOADS, name), "wb") as fh:
             fh.write(data)
+        if not virus_free(os.path.join(UPLOADS, name)):
+            os.remove(os.path.join(UPLOADS, name))
+            refused += 1
+            continue
         saved.append(name)
     if refused:
-        flash(f"{refused} file(s) skipped: use JPG, PNG, GIF or WebP up to 4 MB.", "error")
+        flash(f"{refused} file(s) skipped: use JPG, PNG, GIF or WebP up to 4 MB (files that fail the virus check are refused too).", "error")
     return saved, refused
 
 
@@ -1465,6 +1482,14 @@ def user_update(uid):
     return redirect(url_for("users"))
 
 
+def forget_user(conn, uid):
+    """Delete an account; history stays readable, records just lose the link to the person."""
+    for t, c in (("issues", "reported_by"), ("issues", "resolved_by"), ("services", "logged_by"), ("activity", "user_id"),
+                 ("custody", "started_by"), ("custody", "ended_by"), ("asset_ids", "added_by"), ("photos", "uploaded_by")):
+        conn.execute(f"UPDATE {t} SET {c}=NULL WHERE {c}=?", (uid,))
+    conn.execute("DELETE FROM users WHERE id=?", (uid,))
+
+
 @app.route("/users/<int:uid>/delete", methods=["POST"])
 @role("users")
 def user_delete(uid):
@@ -1474,11 +1499,7 @@ def user_delete(uid):
     elif target and roles_of(target) & set(PRIVILEGED) and not has_role("super_admin"):
         flash("Only a super admin can delete an admin account.", "error")
     else:
-        # keep history readable: records just lose the user link
-        for t, c in (("issues", "reported_by"), ("issues", "resolved_by"), ("services", "logged_by"), ("activity", "user_id"),
-                     ("custody", "started_by"), ("custody", "ended_by"), ("asset_ids", "added_by"), ("photos", "uploaded_by")):
-            db().execute(f"UPDATE {t} SET {c}=NULL WHERE {c}=?", (uid,))
-        db().execute("DELETE FROM users WHERE id=?", (uid,))
+        forget_user(db(), uid)
         db().commit()
         flash("User deleted.", "ok")
     return redirect(url_for("users"))
@@ -1646,10 +1667,25 @@ import ams_more  # noqa: E402
 
 ams_more.init(sys.modules[__name__])
 init_db()
+def remove_demo():
+    """Before real use: delete the demo accounts (their passwords are public). Refuses if no other admin-level account would be left."""
+    demo = [u for u, *_ in DEMO_USERS]
+    with sqlite3.connect(DB) as c:
+        marks = ",".join("?" * len(demo))
+        if not c.execute(f"SELECT 1 FROM users WHERE username NOT IN ({marks}) AND role IN ('super_admin','admin')", demo).fetchone():
+            return "Not removed: create your own super admin or admin account first, or nobody could sign in."
+        ids = [r[0] for r in c.execute(f"SELECT id FROM users WHERE username IN ({marks})", demo)]
+        for uid in ids:
+            forget_user(c, uid)
+    return f"Removed {len(ids)} demo account(s). Leave DEMO unset, or they come back on the next start."
+
+
 if os.environ.get("DEMO"):  # hosted demo (render.yaml): same as --demo
     seed_demo()
     app.config["DEMO"] = True
 if __name__ == "__main__":
+    if "--remove-demo" in sys.argv:
+        sys.exit(print(remove_demo()))
     if "--demo" in sys.argv:
         seed_demo()
         app.config["DEMO"] = True

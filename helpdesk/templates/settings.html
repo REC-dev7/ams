@@ -3,6 +3,20 @@
 <div class="head"><div><h1>Places &amp; departments</h1>
   <div class="muted">These feed the Block, Floor and Room pickers on the ticket form, so everyone writes places the same way.</div></div></div>
 
+<div class="card" style="margin-bottom:16px">
+  <h2>Service rules</h2>
+  <form method="post" action="{{ url_for('rules_save') }}" class="stack">{{ csrf }}
+    <div class="filters" style="margin:0">
+      {% for p in PRIORITIES|reverse %}<label style="display:flex;align-items:center;gap:6px;white-space:nowrap">{{ p }}: fix within <input type="number" name="sla_{{ p }}" min="1" max="2000" value="{{ rules['sla_' ~ p] }}" style="width:80px;min-width:0"> h</label>{% endfor %}
+    </div>
+    <div class="filters" style="margin:0">
+      <label style="display:flex;align-items:center;gap:6px;white-space:nowrap">Flag a ticket with no update for <input type="number" name="stale_hours" min="1" max="2000" value="{{ rules.stale_hours }}" style="width:80px;min-width:0"> hours</label>
+      <label class="check" style="display:flex;align-items:center;gap:8px;width:auto"><input type="checkbox" name="auto_assign" value="1" style="width:auto;min-width:0" {{ 'checked' if rules.auto_assign == '1' }}> Give each new ticket to the technician in its team with the fewest open tickets</label>
+    </div>
+    <div><button class="btn">Save rules</button> <span class="muted" style="font-size:12px">New fix-by times apply to tickets raised after saving. Waiting on the requester still pauses the clock.</span></div>
+  </form>
+</div>
+
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card">
     <h2>Add one place</h2>

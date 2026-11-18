@@ -489,6 +489,81 @@ def test_daily_reminder():
             os.environ.pop(k, None)
 
 
+def test_service_rules_and_auto_assign():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "rules.db")
+    m.init_db()
+    m.seed_demo()
+    x.last_check["at"] = time.time()
+    c = m.app.test_client()
+    login(c, "admin", "demo-admin-2026")
+    page = c.get("/settings").get_data(as_text=True)
+    assert "Service rules" in page and 'name="sla_Critical"' in page and 'value="4"' in page
+
+    # bad values are refused and nothing changes
+    bad = post(c, "/settings/rules", {"sla_Critical": "0", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24"}, "/settings")
+    assert b"whole numbers" in c.get(bad.location, follow_redirects=True).data
+    assert row("SELECT COUNT(*) n FROM app_settings")["n"] == 0
+
+    # new fix-by hours apply to new tickets; the quiet limit shows in the filters
+    post(c, "/settings/rules", {"sla_Critical": "2", "sla_High": "12", "sla_Medium": "48", "sla_Low": "120", "stale_hours": "8"}, "/settings")
+    tid = raise_ticket(c, "Projector dead", priority="High", location="Lab 3")
+    t = row("SELECT created_at, due_at FROM tickets WHERE id=?", tid)
+    hours = (datetime.strptime(t["due_at"], m.FMT) - datetime.strptime(t["created_at"], m.FMT)).total_seconds() / 3600
+    assert round(hours) == 12
+    assert b"No update 8h" in c.get("/tickets").data
+
+    # auto-assign is off by default, then picks the least busy technician of the ticket's team
+    assert row("SELECT assigned_to FROM tickets WHERE id=?", tid)["assigned_to"] is None
+    post(c, "/settings/rules", {"sla_Critical": "4", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24", "auto_assign": "1"}, "/settings")
+    login(c, "staff", "demo-staff-2026")
+    tid = raise_ticket(c, "Wi-Fi down in lab", category="Wi-Fi / Internet", location="Lab 3")
+    t = row("SELECT t.assigned_to, u.team, t.status FROM tickets t JOIN users u ON u.id=t.assigned_to WHERE t.id=?", tid)
+    assert t["team"] == "IT Network" and t["status"] == "Open"
+    assert row("SELECT 1 FROM comments WHERE ticket_id=? AND body LIKE 'Assigned to % (automatically%'", tid)
+    tid = raise_ticket(c, "Strange request", category="Other", location="Lab 3")  # a team with no technician: left unassigned
+    assert row("SELECT assigned_to FROM tickets WHERE id=?", tid)["assigned_to"] is None
+    login(c, "tech", "demo-tech-2026")
+    assert post(c, "/settings/rules", {"stale_hours": "1"}, "/").status_code == 403
+
+
+def test_remove_demo_accounts():
+    m.DB = os.path.join(tempfile.mkdtemp(), "rd.db")
+    m.init_db()
+    m.seed_demo()
+    assert "Not removed" in m.remove_demo()
+    with sqlite3.connect(m.DB) as c:
+        c.execute("INSERT INTO users(username, name, password_hash, role) VALUES ('itadmin', 'IT admin', 'x', 'admin')")
+    n_tickets = row("SELECT COUNT(*) n FROM tickets")["n"]
+    assert "Removed" in m.remove_demo()
+    assert row("SELECT GROUP_CONCAT(username) u FROM users")["u"] == "itadmin"
+    assert row("SELECT COUNT(*) n FROM tickets")["n"] == n_tickets  # tickets stay
+
+
+def test_upload_virus_scan():
+    m.DB = os.path.join(tempfile.mkdtemp(), "v.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "staff", "demo-staff-2026")
+    png = bytes.fromhex("89504e470d0a1a0a") + b"0" * 20
+    real_run = m.subprocess.run
+    send = lambda: c.post("/tickets/new", data={"csrf": csrf(c, "/tickets/new"), "title": "Broken", "location": "Lab",
+                                                "photos": [(io.BytesIO(png), "a.png")]}, content_type="multipart/form-data")
+    try:
+        os.environ["UPLOAD_SCAN"] = "1"
+        m.subprocess.run = lambda cmd, **kw: m.subprocess.CompletedProcess(cmd, 1)  # infected
+        send()
+        assert row("SELECT COUNT(*) n FROM attachments")["n"] == 0 and not os.listdir(m.UPLOADS)
+        m.subprocess.run = lambda cmd, **kw: m.subprocess.CompletedProcess(cmd, 0)  # clean
+        send()
+        assert row("SELECT COUNT(*) n FROM attachments")["n"] == 1
+    finally:
+        m.subprocess.run = real_run
+        os.environ.pop("UPLOAD_SCAN", None)
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
@@ -497,4 +572,7 @@ if __name__ == "__main__":
     test_notifications_analytics_maintenance_writeback()
     test_due_maintenance_runs_by_itself()
     test_daily_reminder()
+    test_service_rules_and_auto_assign()
+    test_remove_demo_accounts()
+    test_upload_virus_scan()
     print("ok")

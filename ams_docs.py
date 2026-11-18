@@ -91,6 +91,10 @@ def init(A):
         stored = secrets.token_hex(16) + ext
         with open(os.path.join(DOCS(), stored), "wb") as out:
             out.write(data)
+        if not A.virus_free(os.path.join(DOCS(), stored)):
+            os.remove(os.path.join(DOCS(), stored))
+            flash("The file failed the virus check, so it was not saved.", "error")
+            return redirect(url_for("asset", aid=aid))
         cur = db().execute("""INSERT INTO documents(file, original_name, ext, size, sha256, kind, version, supersedes_id, description, reference, uploaded_by)
                               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
                            (stored, os.path.basename(fh.filename)[:150], ext, len(data), hashlib.sha256(data).hexdigest(), prev["kind"] if prev else kind,

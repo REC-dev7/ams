@@ -866,6 +866,70 @@ def test_helpdesk_writeback():
         os.environ.pop("AMS_API_WRITE", None)
 
 
+def test_remove_demo_accounts():
+    m.DB = os.path.join(tempfile.mkdtemp(), "rd.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    assert "Not removed" in m.remove_demo()  # only demo admins exist: refusing keeps someone able to sign in
+    assert row("SELECT COUNT(*) n FROM users")["n"] == len(m.DEMO_USERS)
+    with sqlite3.connect(m.DB) as c:
+        c.execute("INSERT INTO users(username, name, password_hash, role) VALUES ('owner', 'Owner', 'x', 'super_admin')")
+    assert "Removed" in m.remove_demo()
+    assert [r["username"] for r in row_all("SELECT username FROM users")] == ["owner"]
+    assert row("SELECT COUNT(*) n FROM activity")["n"] > 0 and row("SELECT COUNT(*) n FROM activity WHERE user_id IS NOT NULL")["n"] == 0
+
+
+def test_upload_virus_scan():
+    m.DB = os.path.join(tempfile.mkdtemp(), "v.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+    cse = asset_id("L1-PC-01")
+    png = bytes.fromhex("89504e470d0a1a0a") + b"0" * 20
+    pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\n%%EOF"
+    csv_data = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "samples", "allotment_sample.csv"), "rb").read()
+    up = lambda path, field, data, name, page: c.post(path, data={"csrf": csrf(c, page), field: (io.BytesIO(data), name)}, content_type="multipart/form-data")
+    count = lambda: (row("SELECT COUNT(*) n FROM photos")["n"], row("SELECT COUNT(*) n FROM documents")["n"], row("SELECT COUNT(*) n FROM import_batches")["n"])
+    real_run = m.subprocess.run
+    calls = []
+
+    def fake(result):
+        def run(cmd, **kw):
+            calls.append(cmd)
+            if result == "missing":
+                raise FileNotFoundError("clamscan")
+            return m.subprocess.CompletedProcess(cmd, result)
+        return run
+
+    def upload_all():
+        up(f"/assets/{cse}/photos", "photos", png, "a.png", f"/assets/{cse}")
+        up(f"/assets/{cse}/documents", "file", pdf, "po.pdf", f"/assets/{cse}")
+        up("/imports/new", "file", csv_data, "allot.csv", "/imports/new")
+
+    try:
+        os.environ.pop("UPLOAD_SCAN", None)
+        m.subprocess.run = fake(1)
+        upload_all()  # scanning off: the scanner is never asked
+        assert count() == (1, 1, 1) and calls == []
+        os.environ["UPLOAD_SCAN"] = "1"
+        upload_all()  # infected: nothing kept, not even on disk
+        assert count() == (1, 1, 1) and len(calls) == 3 and all(cmd[0] == "clamscan" for cmd in calls)
+        m.subprocess.run = fake("missing")
+        upload_all()  # scanner missing: refused, not let through
+        assert count() == (1, 1, 1)
+        m.subprocess.run = fake(0)
+        upload_all()  # clean
+        assert count() == (2, 2, 2)
+        kept = sum(len(fs) for _, _, fs in os.walk(m.UPLOADS))
+        assert kept == 6  # 2 photos + 2 documents + 2 import files; refused ones were deleted
+    finally:
+        m.subprocess.run = real_run
+        os.environ.pop("UPLOAD_SCAN", None)
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -876,4 +940,6 @@ if __name__ == "__main__":
     test_backup_and_restore()
     test_findings_bulk_parts_contracts_api()
     test_helpdesk_writeback()
+    test_remove_demo_accounts()
+    test_upload_virus_scan()
     print("ok")

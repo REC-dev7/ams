@@ -74,10 +74,16 @@ All in `hd_extra.py`.
 - **Planned maintenance** (IT): a repeating job (weekly to yearly) raises a ticket by itself when its date comes, then moves the date on. A long gap raises one ticket, not a pile. Pause, delete, or *Raise now* from the list. The check runs when someone loads a page (at most every 5 minutes), so there is no extra scheduler to keep alive.
 - **Update the AMS** (off by default): with `HD_AMS_WRITEBACK=1` here and `AMS_API_WRITE=1` on the AMS (plus the shared `AMS_API_TOKEN`), a fault ticket that names an asset marks it Faulty, and fixing the last open ticket for it marks it Working. Both are written to the asset's history. Details in `../docs/API.md`.
 
-## Fix-by times (SLA)
+## Fix-by times (SLA) and auto-assign
 
-Critical 4 h · High 1 day · Medium 3 days · Low 7 days, counted from when the ticket was raised.
-Overdue tickets are flagged on the dashboard. Change in `SLA_HOURS` in `app.py`.
+Defaults: Critical 4 h · High 1 day · Medium 3 days · Low 7 days, counted from when the ticket was raised; a ticket with no update for 24 h is flagged.
+An admin changes these under *Places & departments → Service rules* (new times apply to tickets raised after saving).
+The same box switches on **auto-assign**: each new ticket goes to the technician in its team with the fewest open tickets. Off by default.
+
+## Before real use
+
+`python app.py --remove-demo` deletes the demo accounts (refuses until a real admin exists).
+`UPLOAD_SCAN=1` checks every photo with ClamAV. `../loadtest.py` and `../docs/DEPLOY_COLLEGE_SERVER.md` cover load testing and the college server.
 
 ## Test
 

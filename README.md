@@ -61,7 +61,7 @@ Run `--verify` after each backup and try a restore now and then. A backup you ha
 
 ## Handover documents (`docs/`)
 
-`API.md` describes the read-only API. `DATA_DICTIONARY.md` and `PERMISSIONS.md` are generated from the code (`python docs/make_docs.py`). `ERD.md` shows how records connect. `OPEN_DECISIONS.md` lists what the college still has to decide. `RELEASE_CHECKLIST.md` is the pre-pilot list.
+`API.md` describes the read-only API. `DATA_DICTIONARY.md` and `PERMISSIONS.md` are generated from the code (`python docs/make_docs.py`). `ERD.md` shows how records connect. `OPEN_DECISIONS.md` lists what the college still has to decide. `RELEASE_CHECKLIST.md` is the pre-pilot list. **`DEPLOY_COLLEGE_SERVER.md` is the step-by-step guide for the college server** (machine size, services, HTTPS, backups, virus scanning, go-live and rollout).
 
 ## Test
 

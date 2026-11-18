@@ -416,6 +416,10 @@ def init(A):
                 stored = secrets.token_hex(16) + (".xlsx" if name.lower().endswith(".xlsx") else ".csv")
                 with open(os.path.join(IMPORT_DIR(), stored), "wb") as out:
                     out.write(data)
+                if not A.virus_free(os.path.join(IMPORT_DIR(), stored)):
+                    os.remove(os.path.join(IMPORT_DIR(), stored))
+                    flash("The file failed the virus check, so it was not saved.", "error")
+                    return render_template("import_new.html")
                 digest = hashlib.sha256(data).hexdigest()
                 same = q("SELECT id, uploaded_at FROM import_batches WHERE sha256=? AND status!='Reversed' ORDER BY id DESC LIMIT 1", (digest,), one=True)
                 try:
