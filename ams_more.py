@@ -260,7 +260,7 @@ def init(A):
             return redirect(url_for("contracts"))
         cur = db().execute("INSERT INTO contracts(kind, vendor, reference, start_date, end_date, cost, department_id, notes, created_by) VALUES (?,?,?,?,?,?,?,?,?)",
                            (f["kind"], (f.get("vendor") or "").strip() or None, (f.get("reference") or "").strip() or None, *dates, cost,
-                            A.opt_int(f.get("department_id")), (f.get("notes") or "").strip() or None, g.user["id"]))
+                            A.known_id("departments", f.get("department_id")), (f.get("notes") or "").strip() or None, g.user["id"]))
         linked, missing = 0, []
         for code in re.split(r"[,\n;]+", f.get("assets", "")):
             if code.strip():
@@ -362,7 +362,8 @@ def init(A):
             return bad
         if os.environ.get("AMS_API_WRITE") != "1":
             return jsonify(error="Writing through the API is not switched on."), 403
-        j = request.get_json(silent=True) or {}
+        j = request.get_json(silent=True)
+        j = j if isinstance(j, dict) else {}  # a list or plain text is just a bad request
         ticket, event = str(j.get("ticket", "")), j.get("event")
         if event not in ("opened", "resolved") or not re.fullmatch(r"HD-\d{1,6}", ticket):
             return jsonify(error="Send event (opened or resolved) and ticket (HD-0001)."), 400

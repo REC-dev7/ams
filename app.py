@@ -345,6 +345,12 @@ def log(asset_id, text, etype=None, event_date=None, reason=None, approval=None)
 def opt_int(v):
     return int(v) if v and str(v).isdigit() else None
 
+
+def known_id(table, v):
+    """The id if that row exists, else None: a made-up id in a form must never reach the database. table is a constant from the code."""
+    v = opt_int(v)
+    return v if v and q(f"SELECT 1 FROM {table} WHERE id=?", (v,), one=True) else None
+
 # ---------- photos + pagination ----------
 
 UPLOADS = os.path.join(HERE, "uploads")
@@ -448,6 +454,8 @@ def guard():
         return redirect(url_for("login", next=request.full_path))
     if is_limited() and request.endpoint in LIMITED_BLOCKED:
         abort(403)
+    if request.method == "POST" and roles_of(g.user) == {"auditor"} and request.endpoint not in ("logout", "account"):
+        abort(403)  # the auditor reads everything and changes nothing
 
 
 # a custodian (end user) works with their own assets and issues; the rest of the menu is for people who manage equipment
@@ -1017,7 +1025,7 @@ def change_custody(a, f, to=None):
     if str(cur["id"] if cur else 0) != str(f.get("expected", "0")):
         raise ValueError("Someone else just changed who holds this asset. Check the page again before moving it.")
     when = parse_date(f.get("event_date"))
-    dept_id, room_id = opt_int(f.get("department_id")), opt_int(f.get("room_id"))
+    dept_id, room_id = known_id("departments", f.get("department_id")), known_id("rooms", f.get("room_id"))
     person, reason = (f.get("person") or "").strip() or None, (f.get("reason") or "").strip()
     if to == "Department" and not dept_id:
         raise ValueError("Choose the department.")

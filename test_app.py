@@ -206,10 +206,13 @@ def test_flow():
     assert post(c, f"/assets/{cse}/custody", {"to": "Stockroom", "reason": "Lab closed", "expected": str(row("SELECT id FROM custody WHERE asset_id=? AND ended_at IS NULL", cse)["id"])}, f"/assets/{cse}").status_code == 302
     assert c.get("/assets/new").status_code == 403 and c.get("/settings").status_code == 403
     login(c, "auditor")
-    assert c.get(f"/assets/{ece}").status_code == 200 and post(c, f"/assets/{ece}/issues", {"title": "x"}, f"/assets/{ece}").status_code in (302, 403)
+    assert c.get(f"/assets/{ece}").status_code == 200 and post(c, f"/assets/{ece}/issues", {"title": "x"}, f"/assets/{ece}").status_code == 403
     assert c.get("/assets/new").status_code == 403
     login(c, "purchase")
     assert c.get(f"/assets/{ece}").status_code == 200 and c.get(f"/assets/{ece}/edit").status_code == 403
+    login(c, "admin")  # a made-up department or room id is ignored, not saved and not a crash
+    assert post(c, "/stock/new", {"name": "Toner", "department_id": "999999", "room_id": "999999"}, "/stock").status_code == 302
+    assert row("SELECT department_id, room_id FROM stock_items WHERE name='Toner'")["department_id"] is None
 
     # accounts: an admin manages the roles below admin; only a super admin creates, changes or removes admin-level accounts
     for who in ("sysadmin", "purchase", "hod", "tech", "staff"):
@@ -845,6 +848,7 @@ def test_helpdesk_writeback():
         os.environ["AMS_API_WRITE"] = "1"
         assert anon.post(url, json={"event": "x", "ticket": "HD-1"}, headers=auth).status_code == 400
         assert anon.post(url, json={"event": "opened", "ticket": "<b>"}, headers=auth).status_code == 400
+        assert anon.post(url, json=[1, 2], headers=auth).status_code == 400 and anon.post(url, data="x", headers=auth).status_code == 400
         assert anon.post("/api/v1/assets/NOPE/ticket-event", json=body, headers=auth).status_code == 404
         assert row("SELECT condition FROM assets WHERE id=?", a1)["condition"] == "Working"
         assert anon.post(url, json=body, headers=auth).status_code == 200

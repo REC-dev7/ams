@@ -459,7 +459,7 @@ def init(A):
             if not any(t in ("name", "product") for t in cols.values()):
                 flash("Map one column to Asset name (or Product) so every row has a name.", "error")
             else:
-                cfg = {"columns": cols, "department_id": opt_int(f.get("department_id")), "building_id": opt_int(f.get("building_id")),
+                cfg = {"columns": cols, "department_id": A.known_id("departments", f.get("department_id")), "building_id": A.known_id("buildings", f.get("building_id")),
                        "source_system": f.get("source_system", "").strip(), "acquisition_basis": f.get("acquisition_basis") or "Unknown",
                        "cost_basis": f.get("cost_basis") or "Unknown", "tax_included": {"1": 1, "0": 0}.get(f.get("tax_included")),
                        "default_stage": f.get("default_stage") if f.get("default_stage") in ("In stock", "Deployed") else "In stock",

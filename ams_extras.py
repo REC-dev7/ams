@@ -164,7 +164,7 @@ def init(A):
             flash("Give the item a name and a minimum level of 0 or more.", "error")
         else:
             cur = db().execute("INSERT INTO stock_items(name, unit, department_id, room_id, min_level, notes) VALUES (?,?,?,?,?,?)",
-                               (name, f.get("unit", "").strip() or "nos", A.opt_int(f.get("department_id")), A.opt_int(f.get("room_id")), min_level, f.get("notes", "").strip() or None))
+                               (name, f.get("unit", "").strip() or "nos", A.known_id("departments", f.get("department_id")), A.known_id("rooms", f.get("room_id")), min_level, f.get("notes", "").strip() or None))
             db().commit()
             flash("Item added. Record what you have as 'Received'.", "ok")
             return redirect(url_for("stock_item", iid=cur.lastrowid))
@@ -205,7 +205,7 @@ def init(A):
                 raise ValueError("Say why (who needed it, or what the count found).")
             signed = qty if kind == "Received" or (kind == "Adjusted" and f.get("direction") != "down") else -qty
             db().execute("INSERT INTO stock_movements(item_id, qty, kind, event_date, user_id, department_id, reason, reference) VALUES (?,?,?,?,?,?,?,?)",
-                         (iid, signed, kind, A.parse_date(f.get("event_date")), g.user["id"], A.opt_int(f.get("department_id")), reason or None, (f.get("reference") or "").strip() or None))
+                         (iid, signed, kind, A.parse_date(f.get("event_date")), g.user["id"], A.known_id("departments", f.get("department_id")), reason or None, (f.get("reference") or "").strip() or None))
             if q("SELECT COALESCE(SUM(qty), 0) b FROM stock_movements WHERE item_id=?", (iid,), one=True)["b"] < 0:
                 raise ValueError(f"Only {s['balance']:g} {s['unit']} in stock.")  # checked after the write, so two people can't both take the last ones
             db().commit()
@@ -266,7 +266,7 @@ def init(A):
             raise ValueError("Cost must be a number.")
         return [product, f.get("vendor", "").strip() or None, f.get("licence_type") if f.get("licence_type") in LICENCE_TYPES else "Other",
                 f.get("metric") if f.get("metric") in LICENCE_METRICS else "Other", qty, A.opt_int(f.get("in_use")), *dates, cost,
-                f.get("po_number", "").strip() or None, A.opt_int(f.get("department_id")), f.get("notes", "").strip() or None]
+                f.get("po_number", "").strip() or None, A.known_id("departments", f.get("department_id")), f.get("notes", "").strip() or None]
 
     @app.route("/licences/add", methods=["POST"])
     @role("purchase")
