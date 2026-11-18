@@ -453,6 +453,42 @@ def test_due_maintenance_runs_by_itself():
     assert row("SELECT next_due FROM maintenance")["next_due"] > datetime.now().strftime("%Y-%m-%d")
 
 
+def test_daily_reminder():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "r.db")
+    m.init_db()
+    m.seed_demo()
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE users SET email='kumar@example.edu' WHERE username='tech2'")
+    c = m.app.test_client()
+    x.last_check["at"] = time.time()
+    login(c, "admin", "demo-admin-2026")
+    sent = {"chat": [], "mail": []}
+    real = (x.send_chat, x.send_mail)
+    x.send_chat = lambda url, text: sent["chat"].append(text)
+    x.send_mail = lambda msg: sent["mail"].append(msg)
+    try:
+        x.last_check["at"] = 0
+        c.get("/")  # nothing configured: nothing sent
+        x.wait()
+        assert sent == {"chat": [], "mail": []}
+        os.environ.update(HD_CHAT_WEBHOOK="https://chat.example/hook", HD_SMTP_HOST="smtp.example", HD_SMTP_FROM="helpdesk@example.edu")
+        x.last_check["at"] = 0
+        c.get("/")
+        x.wait()
+        assert len(sent["chat"]) == 1 and "Daily reminder" in sent["chat"][0] and "overdue" in sent["chat"][0]
+        assert [msg["To"] for msg in sent["mail"]] == ["kumar@example.edu"] and "need you" in sent["mail"][0]["Subject"]
+        assert row("SELECT COUNT(*) n FROM notify_log WHERE channel LIKE 'reminder%'")["n"] == 2
+        x.last_check["at"] = 0
+        c.get("/")  # the same day again: not sent twice
+        x.wait()
+        assert len(sent["chat"]) == 1 and len(sent["mail"]) == 1
+    finally:
+        x.send_chat, x.send_mail = real
+        for k in ("HD_CHAT_WEBHOOK", "HD_SMTP_HOST", "HD_SMTP_FROM"):
+            os.environ.pop(k, None)
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
@@ -460,4 +496,5 @@ if __name__ == "__main__":
     test_ams_over_the_web()
     test_notifications_analytics_maintenance_writeback()
     test_due_maintenance_runs_by_itself()
+    test_daily_reminder()
     print("ok")

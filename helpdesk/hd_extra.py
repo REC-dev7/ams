@@ -100,16 +100,16 @@ def init(A):
         pending.append(threading.Thread(target=run, daemon=True))
         pending[-1].start()
 
-    def chat(text, subject):
+    def chat(text, subject, channel="chat"):
         if chat_on():
-            background("chat", "Google Chat space", subject, send_chat, os.environ["HD_CHAT_WEBHOOK"], text)
+            background(channel, "Google Chat space", subject, send_chat, os.environ["HD_CHAT_WEBHOOK"], text)
 
-    def mail(to, subject, body):
+    def mail(to, subject, body, channel="email"):
         if mail_on() and to and EMAIL.fullmatch(to):
             msg = EmailMessage()
             msg["From"], msg["To"], msg["Subject"] = os.environ["HD_SMTP_FROM"], to, " ".join(subject.split())
             msg.set_content(body)
-            background("email", to, subject, send_mail, msg)
+            background(channel, to, subject, send_mail, msg)
 
     def ams_event(t, event, **extra):
         if writeback_on() and t["asset_tag"]:
@@ -271,6 +271,31 @@ def init(A):
         if g.get("user") and request.method == "GET" and time.time() - last_check["at"] > 300:
             last_check["at"] = time.time()
             run_due()
+            send_reminders()
+
+    def send_reminders():
+        """Once a day: overdue and quiet tickets to the Chat space, and each technician their own by email.
+        notify_log is the record of 'already sent today', so a restart doesn't send twice."""
+        if not (chat_on() or mail_on()) or q("SELECT 1 FROM notify_log WHERE channel LIKE 'reminder%' AND at >= ?", (date.today().isoformat(),), one=True):
+            return
+        cut = (datetime.now() - timedelta(hours=A.STALE_HOURS)).strftime(A.FMT)
+        rows = q(A.TICKET_SQL + f" WHERE {A.OPEN} AND (t.due_at < ? OR t.updated_at < ?) ORDER BY t.due_at IS NULL, t.due_at", (A.now(), cut))
+        if not rows:
+            return
+        late = lambda t: "overdue" if t["due_at"] and t["due_at"] < A.now() else f"no update {A.STALE_HOURS}h"
+        line = lambda t: f"{ref(t)} [{t['priority']}] {t['title']} ({late(t)}, {t['assignee'] or 'unassigned'})"
+        n_over = sum(1 for t in rows if late(t) == "overdue")
+        chat(f"Daily reminder: {n_over} overdue, {len(rows) - n_over} with no update\n" + "\n".join(line(t) for t in rows[:15])
+             + (f"\n...and {len(rows) - 15} more" if len(rows) > 15 else ""), f"Reminder {date.today()}", channel="reminder-chat")
+        by_tech = {}
+        for t in rows:
+            if t["assigned_to"]:
+                by_tech.setdefault(t["assigned_to"], []).append(t)
+        for uid, mine in by_tech.items():
+            who = q("SELECT email FROM users WHERE id=?", (uid,), one=True)
+            if who:
+                mail(who["email"], f"[Helpdesk] Reminder: {len(mine)} ticket(s) need you",
+                     "\n".join(f"{line(t)}\n  {link(t)}" for t in mine) + "\n", channel="reminder-email")
 
     @app.route("/maintenance")
     @role(*A.MANAGE)

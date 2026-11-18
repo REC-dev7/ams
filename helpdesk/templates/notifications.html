@@ -7,8 +7,8 @@
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card"><h2>Channels</h2>
     <table><tbody>
-      <tr><td><b>Google Chat space</b></td><td>{{ 'On' if chat_on else 'Off' }}</td><td class="muted">New tickets, critical ones flagged. Needs <span class="mono">HD_CHAT_WEBHOOK</span></td></tr>
-      <tr><td><b>Email</b></td><td>{{ 'On' if mail_on else 'Off' }}</td><td class="muted">New ticket to the team, assigned to the technician, resolved to the requester. Needs <span class="mono">HD_SMTP_HOST</span> and <span class="mono">HD_SMTP_FROM</span></td></tr>
+      <tr><td><b>Google Chat space</b></td><td>{{ 'On' if chat_on else 'Off' }}</td><td class="muted">New tickets, critical ones flagged, and a daily list of overdue and quiet tickets. Needs <span class="mono">HD_CHAT_WEBHOOK</span></td></tr>
+      <tr><td><b>Email</b></td><td>{{ 'On' if mail_on else 'Off' }}</td><td class="muted">New ticket to the team, assigned to the technician, resolved to the requester, and each technician's overdue tickets once a day. Needs <span class="mono">HD_SMTP_HOST</span> and <span class="mono">HD_SMTP_FROM</span></td></tr>
       <tr><td><b>Update the AMS</b></td><td>{{ 'On' if writeback else 'Off' }}</td><td class="muted">Marks the asset faulty when a fault ticket names it, and working when the last open one is fixed. Needs <span class="mono">HD_AMS_WRITEBACK=1</span> here and <span class="mono">AMS_API_WRITE=1</span> on the AMS</td></tr>
     </tbody></table>
     {% if without_email %}<p class="muted" style="margin:10px 0 0">{{ without_email }} user(s) have no email yet, so they get nothing by email. Add it on the <a href="{{ url_for('users') }}">Users</a> page.</p>{% endif %}</div>
