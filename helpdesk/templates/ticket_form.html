@@ -12,7 +12,7 @@
       <option value="{{ t }}" {{ 'selected' if (preset.request_type or 'Fault') == t }}>{{ t }} · {{ hint }}</option>{% endfor %}</select></label>
     <label>Kind of problem <select name="category" data-teams='{{ CATEGORY_TEAM|tojson }}'>{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select>
       <span class="hint" data-team-hint></span></label>
-    <label class="full">What's the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. Wi-Fi not working, system not booting, printer not scanning"></label>
+    <label class="full">What's the problem? * <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="e.g. Wi-Fi not working, system not booting, printer not scanning" aria-label="e.g. Wi-Fi not working, system not booting, printer not scanning"></label>
 
     {{ location_picker(location_tree, preset) }}
 
@@ -26,12 +26,12 @@
     {% if rich %}
     <label>Department <select name="department"><option value="">{{ user.department or 'Choose' }} (default)</option>
       {% for d in departments %}<option {{ 'selected' if preset.department == d }}>{{ d }}</option>{% endfor %}</select></label>
-    <label>Reported by (if raising for someone else) <input name="requester_name" value="{{ preset.requester_name or '' }}" placeholder="Name of the faculty or staff member"></label>
+    <label>Reported by (if raising for someone else) <input name="requester_name" value="{{ preset.requester_name or '' }}" placeholder="Name of the faculty or staff member" aria-label="Name of the faculty or staff member"></label>
     {% endif %}
     <label>Asset tag (if you know it)
-      <input name="asset_tag" list="assets" value="{{ preset.asset_tag or '' }}" placeholder="{{ 'Type a tag or name' if assets else 'e.g. AMS-00013' }}" autocomplete="off">
+      <input name="asset_tag" list="assets" value="{{ preset.asset_tag or '' }}" placeholder="{{ 'Type a tag or name' if assets else 'e.g. AMS-00013' }}" autocomplete="off" aria-label="{{ 'Type a tag or name' if assets else 'e.g. AMS-00013' }}">
       {% if assets %}<datalist id="assets">{% for a in assets %}<option value="{{ a.tag }}">{{ a.name }} · {{ a.building }} {{ a.room }}</option>{% endfor %}</datalist>{% endif %}</label>
-    <label class="full">Details <textarea name="description" placeholder="What happened? Any error message? Since when? Which device?">{{ preset.description or '' }}</textarea></label>
+    <label class="full">Details <textarea name="description" placeholder="What happened? Any error message? Since when? Which device?" aria-label="What happened? Any error message? Since when? Which device?">{{ preset.description or '' }}</textarea></label>
     <label class="full">Photos (optional) <input type="file" name="photos" accept="image/jpeg,image/png,image/gif,image/webp" multiple></label>
   </div>
   <div class="actions" style="margin-top:16px">

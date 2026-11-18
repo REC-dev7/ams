@@ -68,6 +68,6 @@
   <input name="location" value="{{ preset.location or '' }}" placeholder="Not in the list? Type the place here instead" aria-label="Other place">
 </div>
 {% else %}
-<label class="full">Where is it? * <input name="location" value="{{ preset.location or '' }}" placeholder="e.g. B Block, 2nd floor, B206"></label>
+<label class="full">Where is it? * <input name="location" value="{{ preset.location or '' }}" placeholder="e.g. B Block, 2nd floor, B206" aria-label="e.g. B Block, 2nd floor, B206"></label>
 {% endif %}
 {%- endmacro %}

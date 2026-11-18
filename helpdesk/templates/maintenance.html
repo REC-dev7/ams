@@ -7,7 +7,7 @@
   <h2>Add a repeating job</h2>
   <form method="post" action="{{ url_for('maintenance_add') }}" class="stack">{{ csrf }}
     <div class="filters" style="margin:0">
-      <input name="title" placeholder="What to do, e.g. Check UPS batteries" required style="min-width:260px">
+      <input name="title" placeholder="What to do, e.g. Check UPS batteries" required style="min-width:260px" aria-label="What to do, e.g. Check UPS batteries">
       <select name="every_days" aria-label="How often">{% for d, l in EVERY.items() %}<option value="{{ d }}" {{ 'selected' if d == 90 }}>{{ l|capitalize }}</option>{% endfor %}</select>
       <input type="date" name="next_due" aria-label="First date" title="First date (empty = today)">
       <select name="category" aria-label="Kind of problem">{% for c in CATEGORIES %}<option>{{ c }}</option>{% endfor %}</select>
@@ -15,8 +15,8 @@
     </div>
     <div class="filters" style="margin:0">
       <select name="location_id" aria-label="Place"><option value="">Place…</option>{% for l in locations %}<option value="{{ l.id }}">{{ l.block }} · {{ l.floor }} · {{ l.room }}</option>{% endfor %}</select>
-      <input name="asset_tag" placeholder="Asset tag (optional)" class="mono">
-      <input name="description" placeholder="Notes for the technician (optional)" style="min-width:260px">
+      <input name="asset_tag" placeholder="Asset tag (optional)" class="mono" aria-label="Asset tag (optional)">
+      <input name="description" placeholder="Notes for the technician (optional)" style="min-width:260px" aria-label="Notes for the technician (optional)">
       <button class="btn">Add</button>
     </div>
   </form>

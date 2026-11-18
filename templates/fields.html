@@ -5,10 +5,10 @@
 <div class="card" style="margin-bottom:16px"><h2>Add a field</h2>
   <form method="post" action="{{ url_for('field_add') }}" class="filters" style="margin:0">{{ csrf }}
     <select name="category_id" required aria-label="Category"><option value="">Kind of asset…</option>{% for c in cats %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select>
-    <input name="name" placeholder="Field name, e.g. RAM" required>
+    <input name="name" placeholder="Field name, e.g. RAM" required aria-label="Field name, e.g. RAM">
     <select name="datatype" aria-label="Data type">{% for k, v in DATATYPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
-    <input name="unit" placeholder="Unit, e.g. GB" style="width:110px">
-    <input name="choices" placeholder="Choices (comma separated), for a choice field">
+    <input name="unit" placeholder="Unit, e.g. GB" style="width:110px" aria-label="Unit, e.g. GB">
+    <input name="choices" placeholder="Choices (comma separated), for a choice field" aria-label="Choices (comma separated), for a choice field">
     <label class="check"><input type="checkbox" name="required" value="1"> Required</label>
     <button class="btn">Add</button></form></div>
 <div class="card flush"><div class="table-wrap"><table>

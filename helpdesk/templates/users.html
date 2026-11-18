@@ -8,13 +8,13 @@
 <div class="card" style="margin-bottom:16px">
   <h2>Add user</h2>
   <form method="post" action="{{ url_for('user_add') }}" class="filters" style="margin:0">{{ csrf }}
-    <input name="name" placeholder="Full name" required>
-    <input name="username" placeholder="Username" required autocomplete="off">
-    <input name="email" type="email" placeholder="Email (for notifications)">
+    <input name="name" placeholder="Full name" required aria-label="Full name">
+    <input name="username" placeholder="Username" required autocomplete="off" aria-label="Username">
+    <input name="email" type="email" placeholder="Email (for notifications)" aria-label="Email (for notifications)">
     <select name="role" aria-label="Role">{% for r in ROLES %}<option value="{{ r }}" {{ 'selected' if r == 'staff' }}>{{ ROLE_LABEL[r] }}</option>{% endfor %}</select>
     <select name="department" aria-label="Department"><option value="">No department</option>{% for d in departments %}<option>{{ d }}</option>{% endfor %}</select>
     <select name="team" aria-label="Team (technicians)"><option value="">No team</option>{% for t in TEAMS %}<option>{{ t }}</option>{% endfor %}</select>
-    <input name="password" type="password" placeholder="Password (8+)" minlength="8" required autocomplete="new-password">
+    <input name="password" type="password" placeholder="Temporary password (10+)" title="They choose their own password at first sign-in" minlength="10" required autocomplete="new-password" aria-label="Temporary password (10+)">
     <button class="btn">Add user</button>
   </form>
 </div>
@@ -31,11 +31,18 @@
         <select name="department" aria-label="Department" style="width:auto"><option value="">No department</option>{% for d in departments %}<option {{ 'selected' if u.department == d }}>{{ d }}</option>{% endfor %}</select>
         <select name="team" aria-label="Team" style="width:auto"><option value="">No team</option>{% for t in TEAMS %}<option {{ 'selected' if u.team == t }}>{{ t }}</option>{% endfor %}</select>
         <input name="email" type="email" value="{{ u.email or '' }}" placeholder="Email" aria-label="Email" style="width:190px">
-        <input name="password" type="password" placeholder="New password" minlength="8" style="width:150px" autocomplete="new-password">
+        <input name="password" type="password" placeholder="New password (10+)" minlength="10" style="width:150px" autocomplete="new-password" aria-label="New password (10+)">
         <button class="btn sm ghost">Save</button></form></td>
       <td>{% if u.id != user.id %}<form method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }}?')">{{ csrf }}<button class="btn danger sm">Delete</button></form>{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table></div></div>
 {{ pager(pg) }}
+
+<div class="card flush" style="margin-top:16px"><h2>Recent changes to accounts and settings</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Details</th></tr></thead>
+    <tbody>{% for x in changes %}<tr><td style="white-space:nowrap">{{ x.at }}</td><td>{{ x.user_name }}</td><td>{{ x.action }}</td><td class="muted" style="font-size:12px">{{ x.detail }}</td></tr>
+    {% else %}<tr><td colspan="4" class="empty">No changes recorded yet.</td></tr>{% endfor %}</tbody>
+  </table></div></div>
 {% endblock %}

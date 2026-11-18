@@ -13,7 +13,7 @@
   <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost" value="{{ l.cost if (l and l.cost is not none) else '' }}"></label>
   <label>PO number <input name="po_number" value="{{ (l.po_number if l else '') or '' }}"></label>
   <label>Department <select name="department_id"><option value="">Whole campus</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if l and l.department_id == d.id }}>{{ d.name }}</option>{% endfor %}</select></label>
-  {% if can('purchase') %}<label>Licence key / contract ID <input name="key_ref" placeholder="{{ 'Leave blank to keep the saved one' if l else '' }}" autocomplete="off"></label>{% endif %}
+  {% if can('purchase') %}<label>Licence key / contract ID <input name="key_ref" placeholder="{{ 'Leave blank to keep the saved one' if l else '' }}" autocomplete="off" aria-label="{{ 'Leave blank to keep the saved one' if l else '' }}"></label>{% endif %}
   <label class="full">Notes <input name="notes" value="{{ (l.notes if l else '') or '' }}"></label>
 </div>
 {% endmacro %}

@@ -59,6 +59,7 @@ DEPARTMENTS = ["CSE", "CSE (AIML)", "CSE (Cyber Security)", "IT", "ECE", "EEE", 
 FMT = "%Y-%m-%d %H:%M:%S"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS admin_log (id INTEGER PRIMARY KEY, at TEXT, user_name TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS login_failures (username TEXT NOT NULL, at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')));
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
@@ -87,7 +88,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 
 # columns added after the first release: applied to existing databases at startup
 MIGRATIONS = {
-    "users": [("department", "TEXT"), ("team", "TEXT"), ("email", "TEXT")],
+    "users": [("department", "TEXT"), ("team", "TEXT"), ("email", "TEXT"), ("must_change", "INTEGER DEFAULT 0")],
     "tickets": [("request_type", "TEXT DEFAULT 'Fault'"), ("team", "TEXT"), ("department", "TEXT"),
                 ("location_id", "INTEGER REFERENCES locations(id)"), ("urgent_reason", "TEXT"), ("first_response_at", "TEXT"),
                 ("updated_at", "TEXT"), ("parent_id", "INTEGER REFERENCES tickets(id)"), ("parts_used", "TEXT"),
@@ -134,11 +135,13 @@ def init_db():
     with sqlite3.connect(DB) as c:
         c.executescript(SCHEMA)
         c.executescript(hd_extra.SCHEMA)
-        for table, cols in MIGRATIONS.items():
-            have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
-            for name, decl in cols:
-                if name not in have:
-                    c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        def add_columns():
+            for table, cols in MIGRATIONS.items():
+                have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+                for name, decl in cols:
+                    if name not in have:
+                        c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        add_columns()
         if "CHECK" in c.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]:
             # first release allowed three roles only; SQLite can't drop a CHECK, so rebuild the table
             c.executescript("""PRAGMA foreign_keys=OFF;
@@ -146,6 +149,7 @@ def init_db():
                   password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT, email TEXT);
                 INSERT INTO users_new(id, username, name, password_hash, role, department, team) SELECT id, username, name, password_hash, role, department, team FROM users;
                 DROP TABLE users; ALTER TABLE users_new RENAME TO users; PRAGMA foreign_keys=ON;""")
+            add_columns()  # the rebuilt table needs the later columns back
         for old, new in OLD_CATEGORIES.items():
             c.execute("UPDATE tickets SET category=? WHERE category=?", (new, old))
         for cat, team in CATEGORY_TEAM.items():
@@ -320,6 +324,16 @@ def guard():
     g.user = q("SELECT * FROM users WHERE id=?", (session.get("uid"),), one=True)
     if not g.user:
         return redirect(url_for("login", next=request.full_path))
+    now_s = int(time.time())
+    if now_s - session.get("seen", now_s) > IDLE_HOURS * 3600:
+        session.clear()
+        flash(f"Signed out after {IDLE_HOURS} hours without use. Sign in again.", "error")
+        return redirect(url_for("login", next=request.full_path))
+    if now_s - session.get("seen", 0) > 60:  # refresh the cookie at most once a minute
+        session["seen"] = now_s
+    if g.user["must_change"] and request.endpoint not in ("account", "logout"):
+        flash("Choose your own password before you continue.", "error")
+        return redirect(url_for("account"))
     if request.method == "POST" and g.user["role"] == "auditor" and request.endpoint not in ("logout", "account"):
         abort(403)
 
@@ -406,8 +420,8 @@ def setup():
         return redirect(url_for("login"))
     if request.method == "POST":
         f = request.form
-        if len(f.get("password", "")) < 8:
-            flash("Password must be at least 8 characters.", "error")
+        if (weak := password_problem(f.get("password", ""), f.get("username", ""))):
+            flash(weak, "error")
         elif not f.get("username", "").strip() or not f.get("name", "").strip():
             flash("Name and username are required.", "error")
         else:
@@ -417,6 +431,19 @@ def setup():
             flash("Admin account created. Sign in.", "ok")
             return redirect(url_for("login"))
     return render_template("setup.html")
+
+
+IDLE_HOURS = 8  # signed out after this long without opening a page: lab and office PCs are shared
+EASY = {"password", "password1", "password123", "12345678", "123456789", "1234567890", "qwerty123", "welcome123", "rajalakshmi", "admin12345", "letmein123"}
+
+
+def password_problem(pw, username=""):
+    """Why a new password is too weak, or None."""
+    if len(pw) < 10:
+        return "Use a password of at least 10 characters."
+    if pw.lower() in EASY or pw.lower() == (username or "").strip().lower() or len(set(pw)) < 4:
+        return "That password is too easy to guess. Use a few words together, or a longer mix."
+    return None
 
 
 @app.route("/healthz")
@@ -439,7 +466,7 @@ def login():
             db().execute("DELETE FROM login_failures WHERE username=? OR at < datetime('now', 'localtime', '-1 day')", (name,))
             db().commit()
             session.clear()
-            session["uid"] = u["id"]
+            session["uid"], session["seen"] = u["id"], int(time.time())
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
         else:
@@ -461,10 +488,12 @@ def account():
         f = request.form
         if not check_password_hash(g.user["password_hash"], f.get("current", "")):
             flash("Current password is wrong.", "error")
-        elif len(f.get("new", "")) < 8:
-            flash("New password must be at least 8 characters.", "error")
+        elif (weak := password_problem(f.get("new", ""), g.user["username"])):
+            flash(weak, "error")
+        elif check_password_hash(g.user["password_hash"], f.get("new", "")):
+            flash("Choose a password different from the current one.", "error")
         else:
-            db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(f["new"]), g.user["id"]))
+            db().execute("UPDATE users SET password_hash=?, must_change=0 WHERE id=?", (generate_password_hash(f["new"]), g.user["id"]))
             db().commit()
             flash("Password changed.", "ok")
             return redirect(url_for("account"))
@@ -934,7 +963,7 @@ def users():
     term = request.args.get("q", "").strip()
     rows, pg = paginate("SELECT * FROM users" + (" WHERE name LIKE ? OR username LIKE ?" if term else "") + " ORDER BY role, name",
                         [f"%{term}%"] * 2 if term else [])
-    return render_template("users.html", rows=rows, pg=pg, TEAMS=TEAMS, ROLE_LABEL=ROLE_LABEL,
+    return render_template("users.html", rows=rows, pg=pg, TEAMS=TEAMS, ROLE_LABEL=ROLE_LABEL, changes=q("SELECT * FROM admin_log ORDER BY id DESC LIMIT 30"),
                            departments=[r["name"] for r in q("SELECT name FROM departments ORDER BY name")])
 
 
@@ -947,11 +976,14 @@ def dept_team(f):
 @role("admin")
 def user_add():
     f = request.form
-    if len(f.get("password", "")) < 8 or not f.get("username", "").strip() or not f.get("name", "").strip() or f.get("role") not in ROLES:
-        flash("Name, username, role and a password of 8+ characters are required.", "error")
+    weak = password_problem(f.get("password", ""), f.get("username", ""))
+    if not f.get("username", "").strip() or not f.get("name", "").strip() or f.get("role") not in ROLES:
+        flash("Name, username and role are required.", "error")
+    elif weak:
+        flash(weak, "error")
     else:
         try:
-            db().execute("INSERT INTO users(username, name, password_hash, role, department, team, email) VALUES (?,?,?,?,?,?,?)",
+            db().execute("INSERT INTO users(username, name, password_hash, role, department, team, email, must_change) VALUES (?,?,?,?,?,?,?,1)",
                          (f["username"].strip().lower(), f["name"].strip(), generate_password_hash(f["password"]), f["role"], *dept_team(f),
                           f.get("email", "").strip() or None))
             db().commit()
@@ -965,14 +997,17 @@ def user_add():
 @role("admin")
 def user_update(uid):
     f = request.form
-    if f.get("password") and len(f["password"]) < 8:
-        flash("Password must be at least 8 characters.", "error")
+    target = q("SELECT * FROM users WHERE id=?", (uid,), one=True)
+    if not target:
+        abort(404)
+    if f.get("password") and (weak := password_problem(f["password"], target["username"])):
+        flash(weak, "error")
         return redirect(url_for("users"))
     if f.get("role") in ROLES and uid != g.user["id"]:
         db().execute("UPDATE users SET role=? WHERE id=?", (f["role"], uid))
     db().execute("UPDATE users SET department=?, team=?, email=? WHERE id=?", (*dept_team(f), f.get("email", "").strip() or None, uid))
     if f.get("password"):
-        db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(f["password"]), uid))
+        db().execute("UPDATE users SET password_hash=?, must_change=? WHERE id=?", (generate_password_hash(f["password"]), int(uid != g.user["id"]), uid))
     db().commit()
     flash("User updated.", "ok")
     return redirect(url_for("users"))
@@ -1194,6 +1229,33 @@ def seed_demo():
             hours_ago=40, fix="Replaced the failed motherboard from stock.", fixed_after_h=0, source="Logged by technician", parts="1 x motherboard")
         add("Projector shows no signal", "HDMI connected, class waiting.", "Smart board / projector / AV", "High", "Open", "ANew202", "staff", hours_ago=40, quiet=True)
         c.commit()
+
+
+# ---------- record of admin changes (accounts and settings) ----------
+
+ADMIN_ACTIONS = {"user_add": "Added a user", "user_update": "Changed a user", "user_delete": "Deleted a user",
+                 "location_add": "Added places", "location_delete": "Removed a place", "department_add": "Added a department",
+                 "department_delete": "Removed a department", "rules_save": "Changed the service rules", "maintenance_act": "Changed a planned job"}
+DETAIL_KEYS = ("name", "username", "role", "extra_roles", "department", "department_id", "team", "email", "block", "floor", "room",
+               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours")
+
+
+@app.after_request
+def record_admin_change(resp):
+    """After an accounts or settings form that went through, keep who did what. Passwords are never written down."""
+    if request.method == "POST" and request.endpoint in ADMIN_ACTIONS and g.get("user") and resp.status_code in (301, 302, 303):
+        flashes = session.get("_flashes", [])
+        if not any(cat == "error" for cat, _ in flashes):
+            said = next((msg for cat, msg in reversed(flashes) if cat == "ok"), "")
+            parts = [f"{k}: {', '.join(v for v in request.form.getlist(k) if v)}" for k in DETAIL_KEYS if any(request.form.getlist(k))]
+            parts += [f"{k}: {v}" for k, v in (request.view_args or {}).items()]
+            if request.form.get("password"):
+                parts.append("password reset")
+            db().execute("INSERT INTO admin_log(at, user_name, action, detail) VALUES (?,?,?,?)",
+                         (datetime.now().strftime("%Y-%m-%d %H:%M"), g.user["name"], ADMIN_ACTIONS[request.endpoint] + (f" ({said})" if said else ""),
+                          "; ".join(parts)[:400]))
+            db().commit()
+    return resp
 
 
 import hd_extra  # notifications, analytics, planned maintenance, AMS write-back

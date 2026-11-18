@@ -5,6 +5,7 @@ import os
 import re
 import sqlite3
 import tempfile
+import time
 import threading
 from datetime import date, timedelta
 
@@ -21,6 +22,8 @@ def post(c, path, data, page="/"):
 
 def login(c, user, pw=None):
     c.post("/logout", data={"csrf": csrf(c, "/login")})
+    with sqlite3.connect(m.DB) as d:  # the first-password change has its own test
+        d.execute("UPDATE users SET must_change=0 WHERE username=?", (user,))
     return post(c, "/login", {"username": user, "password": pw or f"demo-{user}-2026"}, "/login")
 
 
@@ -951,6 +954,54 @@ def test_login_lockout():
     assert row("SELECT COUNT(*) n FROM login_failures WHERE username='admin'")["n"] == 0  # cleared on success
 
 
+def test_passwords_and_idle_sign_out():
+    m.DB = os.path.join(tempfile.mkdtemp(), "pw.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+    for weak in ("short1", "password123", "aaaaaaaaaaaa", "newperson1"):  # too short, common, one letter, same as the username
+        post(c, "/users/add", {"name": "New", "username": "newperson1", "role": "custodian", "password": weak}, "/users")
+        assert row("SELECT 1 FROM users WHERE username='newperson1'") is None, weak
+    post(c, "/users/add", {"name": "New", "username": "newperson1", "role": "custodian", "password": "Temp-Pass-2026"}, "/users")
+    assert row("SELECT must_change FROM users WHERE username='newperson1'")["must_change"] == 1
+    # first sign-in: every page sends them to choose their own password, then they can work
+    c.post("/logout", data={"csrf": csrf(c, "/login")})
+    assert post(c, "/login", {"username": "newperson1", "password": "Temp-Pass-2026"}, "/login").status_code == 302
+    assert c.get("/assets").location.endswith("/account")
+    assert b"Choose a password different" in post(c, "/account", {"current": "Temp-Pass-2026", "new": "Temp-Pass-2026"}, "/account").data
+    post(c, "/account", {"current": "Temp-Pass-2026", "new": "blue kettle morning"}, "/account")
+    assert row("SELECT must_change FROM users WHERE username='newperson1'")["must_change"] == 0
+    assert c.get("/assets").status_code == 200
+    # 8 hours without opening a page signs you out
+    with c.session_transaction() as s:
+        s["seen"] = int(time.time()) - 9 * 3600
+    r = c.get("/assets")
+    assert "/login" in r.location
+    assert c.get("/assets").status_code == 302  # still signed out
+
+
+def test_admin_change_record():
+    m.DB = os.path.join(tempfile.mkdtemp(), "al.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin")
+    post(c, "/users/add", {"name": "Bad", "username": "bad1", "role": "custodian", "password": "short"}, "/users")  # refused: not recorded
+    assert row("SELECT COUNT(*) n FROM admin_log")["n"] == 0
+    post(c, "/users/add", {"name": "Meena", "username": "meena", "role": "custodian", "password": "Secret-Words-99"}, "/users")
+    uid = row("SELECT id FROM users WHERE username='meena'")["id"]
+    post(c, f"/users/{uid}/update", {"role": "lab_assistant", "password": "Another-Secret-77"}, "/users")
+    post(c, "/settings/buildings/add", {"name": "Annex"}, "/settings")
+    log = row_all("SELECT * FROM admin_log ORDER BY id")
+    assert [x["action"].split(" (")[0] for x in log] == ["Added a user", "Changed a user", "Added a setting"]
+    assert log[0]["user_name"] == "Demo Admin" and "meena" in log[0]["detail"] and "password reset" in log[1]["detail"]
+    assert not any("Secret" in (x["detail"] or "") for x in log)  # passwords never written down
+    assert b"Changed a user" in c.get("/users").data
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -964,4 +1015,6 @@ if __name__ == "__main__":
     test_remove_demo_accounts()
     test_upload_virus_scan()
     test_login_lockout()
+    test_passwords_and_idle_sign_out()
+    test_admin_change_record()
     print("ok")

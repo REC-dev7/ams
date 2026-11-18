@@ -65,6 +65,8 @@ Run `--verify` after each backup and try a restore now and then. A backup you ha
 
 ## Before real use
 
+Sign-in safety: passwords need 10+ characters and can't be common ones or the username; a password an admin sets is temporary (the person chooses their own at first sign-in); 8 hours without use signs you out. Every change to accounts and settings is listed at the bottom of the Users page (passwords are never recorded).
+
 ```
 python app.py --remove-demo                                     # delete the demo accounts (refuses until a real admin exists)
 python loadtest.py http://SERVER --users 150 --login USER:PASS    # many users at once; same for the Helpdesk

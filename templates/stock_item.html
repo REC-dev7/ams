@@ -13,7 +13,7 @@
       <label>Date it happened <input type="date" name="event_date" value="{{ today }}" max="{{ today }}"></label>
       <label>Given to department (when issued) <select name="department_id"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>
       <label>Reference (GRN, request no.) <input name="reference"></label>
-      <label class="full">Why (needed for Issued and Adjusted) <input name="reason" placeholder="e.g. printer in B115, stock count correction"></label>
+      <label class="full">Why (needed for Issued and Adjusted) <input name="reason" placeholder="e.g. printer in B115, stock count correction" aria-label="e.g. printer in B115, stock count correction"></label>
     </div>
     <div><button class="btn">Save</button></div></form></div>
 {% endif %}

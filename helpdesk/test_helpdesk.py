@@ -20,6 +20,8 @@ def post(c, path, data, page="/"):
 
 def login(c, user, pw):
     c.post("/logout", data={"csrf": csrf(c, "/login")})
+    with sqlite3.connect(m.DB) as d:  # the first-password change has its own test
+        d.execute("UPDATE users SET must_change=0 WHERE username=?", (user,))
     return post(c, "/login", {"username": user, "password": pw}, "/login")
 
 
@@ -625,6 +627,41 @@ def test_rating_auto_close_and_health():
     x.last_check["at"] = time.time()
 
 
+def test_passwords_and_idle_sign_out():
+    m.DB = os.path.join(tempfile.mkdtemp(), "pw.db")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin", "demo-admin-2026")
+    post(c, "/users/add", {"name": "New", "username": "newperson1", "role": "staff", "password": "password123"}, "/users")
+    assert row("SELECT 1 FROM users WHERE username='newperson1'") is None
+    post(c, "/users/add", {"name": "New", "username": "newperson1", "role": "staff", "password": "Temp-Pass-2026"}, "/users")
+    assert row("SELECT must_change FROM users WHERE username='newperson1'")["must_change"] == 1
+    c.post("/logout", data={"csrf": csrf(c, "/login")})
+    post(c, "/login", {"username": "newperson1", "password": "Temp-Pass-2026"}, "/login")
+    assert c.get("/tickets/new").location.endswith("/account")
+    post(c, "/account", {"current": "Temp-Pass-2026", "new": "blue kettle morning"}, "/account")
+    assert c.get("/tickets/new").status_code == 200
+    with c.session_transaction() as s:
+        s["seen"] = int(time.time()) - 9 * 3600
+    assert "/login" in c.get("/").location
+
+
+def test_admin_change_record():
+    m.DB = os.path.join(tempfile.mkdtemp(), "al.db")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "admin", "demo-admin-2026")
+    post(c, "/users/add", {"name": "Meena", "username": "meena", "role": "staff", "password": "Secret-Words-99"}, "/users")
+    post(c, "/settings/departments/add", {"name": "Robotics"}, "/settings")
+    post(c, "/settings/rules", {"sla_Critical": "2", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24"}, "/settings")
+    acts = [r[0].split(" (")[0] for r in sqlite3.connect(m.DB).execute("SELECT action FROM admin_log ORDER BY id")]
+    assert acts == ["Added a user", "Added a department", "Changed the service rules"], acts
+    assert "Secret" not in "".join(r[0] or "" for r in sqlite3.connect(m.DB).execute("SELECT detail FROM admin_log"))
+    assert b"Changed the service rules" in c.get("/users").data
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
@@ -637,5 +674,7 @@ if __name__ == "__main__":
     test_remove_demo_accounts()
     test_upload_virus_scan()
     test_login_lockout()
+    test_passwords_and_idle_sign_out()
+    test_admin_change_record()
     test_rating_auto_close_and_health()
     print("ok")

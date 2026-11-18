@@ -9,7 +9,7 @@
   <div class="card flush" id="buildings">
     <h2>Buildings</h2>
     <form method="post" action="{{ url_for('settings_add', kind='buildings') }}" class="filters" style="padding:0 18px">{{ csrf }}
-      <input name="name" placeholder="Building name" required><input name="code" placeholder="Code (CSE)" style="min-width:90px;width:110px"><input name="campus" placeholder="Campus (optional)" style="width:150px"><button class="btn">Add</button>
+      <input name="name" placeholder="Building name" required aria-label="Building name"><input name="code" placeholder="Code (CSE)" style="min-width:90px;width:110px" aria-label="Code (CSE)"><input name="campus" placeholder="Campus (optional)" style="width:150px" aria-label="Campus (optional)"><button class="btn">Add</button>
     </form>
     <table><thead><tr><th>Name</th><th>Code</th><th class="num">Rooms</th><th></th></tr></thead><tbody>
       {% for b in buildings %}<tr><td>{{ b.name }}</td><td class="mono">{{ b.code or '' }}</td><td class="num">{{ b.n }}</td><td>{{ del('buildings', b) }}</td></tr>
@@ -20,7 +20,7 @@
   <div class="card flush" id="categories">
     <h2>Equipment categories</h2>
     <form method="post" action="{{ url_for('settings_add', kind='categories') }}" class="filters" style="padding:0 18px">{{ csrf }}
-      <input name="name" placeholder="New category" required>
+      <input name="name" placeholder="New category" required aria-label="New category">
       <input name="life_years" type="number" min="1" max="50" placeholder="Life (yrs)" aria-label="Useful life in years" style="min-width:90px;width:110px">
       <button class="btn">Add</button>
     </form>
@@ -37,7 +37,7 @@
 <div class="card flush" id="departments" style="margin-bottom:16px">
   <h2>Departments</h2>
   <form method="post" action="{{ url_for('settings_add', kind='departments') }}" class="filters" style="padding:0 18px">{{ csrf }}
-    <input name="name" placeholder="Department name" required><input name="code" placeholder="Code (optional)" style="width:130px"><button class="btn sm">Add</button>
+    <input name="name" placeholder="Department name" required aria-label="Department name"><input name="code" placeholder="Code (optional)" style="width:130px" aria-label="Code (optional)"><button class="btn sm">Add</button>
   </form>
   <div class="table-wrap"><table>
     <thead><tr><th>Department</th><th>Code</th><th class="num">Assets managed</th><th></th></tr></thead>
@@ -48,10 +48,10 @@
 <div class="card flush" id="rooms">
   <h2>Rooms</h2>
   <form method="post" action="{{ url_for('settings_add', kind='rooms') }}" class="filters" style="padding:0 18px">{{ csrf }}
-    <select name="building_id" required><option value="">Building…</option>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>
-    <input name="name" placeholder="Room name (Computer Lab 3)" required>
-    <select name="type">{% for t in ROOM_TYPES %}<option>{{ t }}</option>{% endfor %}</select>
-    <input name="floor" placeholder="Floor" style="min-width:70px;width:80px">
+    <select name="building_id" required aria-label="Building"><option value="">Building…</option>{% for b in buildings %}<option value="{{ b.id }}">{{ b.name }}</option>{% endfor %}</select>
+    <input name="name" placeholder="Room name (Computer Lab 3)" required aria-label="Room name (Computer Lab 3)">
+    <select name="type" aria-label="Kind of room">{% for t in ROOM_TYPES %}<option>{{ t }}</option>{% endfor %}</select>
+    <input name="floor" placeholder="Floor" style="min-width:70px;width:80px" aria-label="Floor">
     <button class="btn">Add room</button>
   </form>
   <div class="table-wrap"><table><thead><tr><th>Building</th><th>Room</th><th>Type</th><th>Floor</th><th class="num">Assets</th><th></th></tr></thead><tbody>

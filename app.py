@@ -11,6 +11,7 @@ import secrets
 import sqlite3
 import subprocess
 import sys
+import time
 from datetime import date, datetime, timedelta
 from functools import wraps
 
@@ -71,6 +72,7 @@ DEFAULT_CATEGORIES = [
 ]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS admin_log (id INTEGER PRIMARY KEY, at TEXT, user_name TEXT, action TEXT, detail TEXT);
 CREATE TABLE IF NOT EXISTS login_failures (username TEXT NOT NULL, at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')));
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
@@ -225,7 +227,7 @@ MIGRATIONS = {
                ("legacy_code", "TEXT"), ("archived_at", "TEXT"), ("archive_reason", "TEXT"), ("import_batch_id", "INTEGER"),
                ("source_row", "INTEGER"), ("source_json", "TEXT"), ("rack", "TEXT")],
     "activity": [("event_type", "TEXT"), ("event_date", "TEXT"), ("reason", "TEXT"), ("approval_ref", "TEXT")],
-    "users": [("extra_roles", "TEXT"), ("department_id", "INTEGER")],
+    "users": [("extra_roles", "TEXT"), ("department_id", "INTEGER"), ("must_change", "INTEGER DEFAULT 0")],
     "buildings": [("campus", "TEXT")],
 }
 AUDIT_DAYS = 365  # stock must be physically verified at least yearly
@@ -234,11 +236,13 @@ AUDIT_DAYS = 365  # stock must be physically verified at least yearly
 def init_db():
     with sqlite3.connect(DB) as c:
         c.executescript(SCHEMA)
-        for table, cols in MIGRATIONS.items():
-            have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
-            for name, decl in cols:
-                if name not in have:
-                    c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        def add_columns():
+            for table, cols in MIGRATIONS.items():
+                have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+                for name, decl in cols:
+                    if name not in have:
+                        c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
+        add_columns()
         if "CHECK" in c.execute("SELECT sql FROM sqlite_master WHERE name='users'").fetchone()[0]:
             # the first versions allowed three roles only; SQLite can't drop a CHECK, so rebuild the table
             c.executescript("""PRAGMA foreign_keys=OFF;
@@ -247,6 +251,7 @@ def init_db():
                 INSERT INTO users_new SELECT id, username, name, password_hash, CASE role WHEN 'staff' THEN 'custodian' ELSE role END,
                   extra_roles, department_id FROM users;
                 DROP TABLE users; ALTER TABLE users_new RENAME TO users; PRAGMA foreign_keys=ON;""")
+            add_columns()  # the rebuilt table needs the later columns back
         c.execute("""UPDATE users SET role='super_admin' WHERE role='admin' AND id=(SELECT MIN(id) FROM users WHERE role='admin')
                      AND NOT EXISTS (SELECT 1 FROM users WHERE role='super_admin')""")
         # one-time: split the old single status into lifecycle stage + working condition
@@ -452,6 +457,16 @@ def guard():
     g.user = q("SELECT * FROM users WHERE id=?", (session.get("uid"),), one=True)
     if not g.user:
         return redirect(url_for("login", next=request.full_path))
+    now_s = int(time.time())
+    if now_s - session.get("seen", now_s) > IDLE_HOURS * 3600:
+        session.clear()
+        flash(f"Signed out after {IDLE_HOURS} hours without use. Sign in again.", "error")
+        return redirect(url_for("login", next=request.full_path))
+    if now_s - session.get("seen", 0) > 60:  # refresh the cookie at most once a minute
+        session["seen"] = now_s
+    if g.user["must_change"] and request.endpoint not in ("account", "logout"):
+        flash("Choose your own password before you continue.", "error")
+        return redirect(url_for("account"))
     if is_limited() and request.endpoint in LIMITED_BLOCKED:
         abort(403)
     if request.method == "POST" and roles_of(g.user) == {"auditor"} and request.endpoint not in ("logout", "account"):
@@ -545,8 +560,8 @@ def setup():
         return redirect(url_for("login"))
     if request.method == "POST":
         f = request.form
-        if len(f.get("password", "")) < 8:
-            flash("Password must be at least 8 characters.", "error")
+        if (weak := password_problem(f.get("password", ""), f.get("username", ""))):
+            flash(weak, "error")
         elif not f.get("username", "").strip() or not f.get("name", "").strip():
             flash("Name and username are required.", "error")
         else:
@@ -556,6 +571,19 @@ def setup():
             flash("Admin account created. Sign in.", "ok")
             return redirect(url_for("login"))
     return render_template("setup.html")
+
+
+IDLE_HOURS = 8  # signed out after this long without opening a page: lab and office PCs are shared
+EASY = {"password", "password1", "password123", "12345678", "123456789", "1234567890", "qwerty123", "welcome123", "rajalakshmi", "admin12345", "letmein123"}
+
+
+def password_problem(pw, username=""):
+    """Why a new password is too weak, or None."""
+    if len(pw) < 10:
+        return "Use a password of at least 10 characters."
+    if pw.lower() in EASY or pw.lower() == (username or "").strip().lower() or len(set(pw)) < 4:
+        return "That password is too easy to guess. Use a few words together, or a longer mix."
+    return None
 
 
 @app.route("/healthz")
@@ -578,7 +606,7 @@ def login():
             db().execute("DELETE FROM login_failures WHERE username=? OR at < datetime('now', 'localtime', '-1 day')", (name,))
             db().commit()
             session.clear()
-            session["uid"] = u["id"]
+            session["uid"], session["seen"] = u["id"], int(time.time())
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
         else:
@@ -600,10 +628,12 @@ def account():
         f = request.form
         if not check_password_hash(g.user["password_hash"], f.get("current", "")):
             flash("Current password is wrong.", "error")
-        elif len(f.get("new", "")) < 8:
-            flash("New password must be at least 8 characters.", "error")
+        elif (weak := password_problem(f.get("new", ""), g.user["username"])):
+            flash(weak, "error")
+        elif check_password_hash(g.user["password_hash"], f.get("new", "")):
+            flash("Choose a password different from the current one.", "error")
         else:
-            db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(f["new"]), g.user["id"]))
+            db().execute("UPDATE users SET password_hash=?, must_change=0 WHERE id=?", (generate_password_hash(f["new"]), g.user["id"]))
             db().commit()
             flash("Password changed.", "ok")
             return redirect(url_for("account"))
@@ -1476,7 +1506,8 @@ def users():
     scopes = {}
     for r in q("SELECT user_id, department_id FROM user_scopes"):
         scopes.setdefault(r["user_id"], set()).add(r["department_id"])
-    return render_template("users.html", rows=rows, pg=pg, ROLE_LABEL=ROLE_LABEL, scopes=scopes, roles_of=roles_of, **lookups())
+    return render_template("users.html", rows=rows, pg=pg, ROLE_LABEL=ROLE_LABEL, scopes=scopes, roles_of=roles_of,
+                           changes=q("SELECT * FROM admin_log ORDER BY id DESC LIMIT 30"), **lookups())
 
 
 @app.route("/users/add", methods=["POST"])
@@ -1485,9 +1516,12 @@ def user_add():
     f = request.form
     try:
         primary, extras, dept, scopes = user_form_values(f)
-        if len(f.get("password", "")) < 8 or not f.get("username", "").strip() or not f.get("name", "").strip():
-            raise ValueError("Name, username and a password of 8+ characters are required.")
-        cur = db().execute("INSERT INTO users(username, name, password_hash, role, extra_roles, department_id) VALUES (?,?,?,?,?,?)",
+        if not f.get("username", "").strip() or not f.get("name", "").strip():
+            raise ValueError("Name and username are required.")
+        if (weak := password_problem(f.get("password", ""), f.get("username", ""))):
+            raise ValueError(weak)
+        # a password an admin chose is temporary: the person picks their own at first sign-in
+        cur = db().execute("INSERT INTO users(username, name, password_hash, role, extra_roles, department_id, must_change) VALUES (?,?,?,?,?,?,1)",
                            (f["username"].strip().lower(), f["name"].strip(), generate_password_hash(f["password"]), primary, extras, dept))
         save_scopes(cur.lastrowid, scopes)
         db().commit()
@@ -1507,8 +1541,8 @@ def user_update(uid):
     if not target:
         abort(404)
     try:
-        if f.get("password") and len(f["password"]) < 8:
-            raise ValueError("Password must be at least 8 characters.")
+        if f.get("password") and (weak := password_problem(f["password"], target["username"])):
+            raise ValueError(weak)
         if roles_of(target) & set(PRIVILEGED) and not has_role("super_admin"):
             raise ValueError("Only a super admin can change an admin account.")
         if uid == g.user["id"]:
@@ -1519,7 +1553,7 @@ def user_update(uid):
         db().execute("UPDATE users SET role=?, extra_roles=?, department_id=? WHERE id=?", (primary, extras, dept, uid))
         save_scopes(uid, scopes - {dept})
         if f.get("password"):
-            db().execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(f["password"]), uid))
+            db().execute("UPDATE users SET password_hash=?, must_change=? WHERE id=?", (generate_password_hash(f["password"]), int(uid != g.user["id"]), uid))
         db().commit()
         flash("User updated.", "ok")
     except ValueError as e:
@@ -1697,6 +1731,33 @@ def seed_demo():
         c.execute("INSERT INTO services(asset_id, date, type, description, done_by, cost) VALUES (?,?,?,?,?,?)",
                   (aid[("Server Room", "10 kVA UPS")], today.isoformat(), "Repair", "Battery bank replacement in progress", "APC service", 42000))
         c.execute("UPDATE counters SET value=(SELECT MAX(id) FROM assets) WHERE name='tag'")
+
+
+# ---------- record of admin changes (accounts and settings) ----------
+
+ADMIN_ACTIONS = {"user_add": "Added a user", "user_update": "Changed a user", "user_delete": "Deleted a user",
+                 "settings_add": "Added a setting", "settings_delete": "Removed a setting", "category_life": "Changed a useful life",
+                 "field_add": "Added a specification field", "field_delete": "Removed a specification field"}
+DETAIL_KEYS = ("name", "username", "role", "extra_roles", "department", "department_id", "team", "email", "block", "floor", "room",
+               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours")
+
+
+@app.after_request
+def record_admin_change(resp):
+    """After an accounts or settings form that went through, keep who did what. Passwords are never written down."""
+    if request.method == "POST" and request.endpoint in ADMIN_ACTIONS and g.get("user") and resp.status_code in (301, 302, 303):
+        flashes = session.get("_flashes", [])
+        if not any(cat == "error" for cat, _ in flashes):
+            said = next((msg for cat, msg in reversed(flashes) if cat == "ok"), "")
+            parts = [f"{k}: {', '.join(v for v in request.form.getlist(k) if v)}" for k in DETAIL_KEYS if any(request.form.getlist(k))]
+            parts += [f"{k}: {v}" for k, v in (request.view_args or {}).items()]
+            if request.form.get("password"):
+                parts.append("password reset")
+            db().execute("INSERT INTO admin_log(at, user_name, action, detail) VALUES (?,?,?,?)",
+                         (datetime.now().strftime("%Y-%m-%d %H:%M"), g.user["name"], ADMIN_ACTIONS[request.endpoint] + (f" ({said})" if said else ""),
+                          "; ".join(parts)[:400]))
+            db().commit()
+    return resp
 
 
 import ams_import  # noqa: E402  (the import wizard and purchase batches live in their own file)

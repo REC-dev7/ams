@@ -84,6 +84,8 @@ When the requester confirms a fix they can **rate it 1 to 5**; the average shows
 
 ## Before real use
 
+Sign-in safety: passwords need 10+ characters and can't be common ones or the username; a password an admin sets is temporary (the person chooses their own at first sign-in); 8 hours without use signs you out. Every change to accounts and settings is listed at the bottom of the Users page (passwords are never recorded).
+
 `python app.py --remove-demo` deletes the demo accounts (refuses until a real admin exists).
 `UPLOAD_SCAN=1` checks every photo with ClamAV. `../loadtest.py` and `../docs/DEPLOY_COLLEGE_SERVER.md` cover load testing and the college server.
 

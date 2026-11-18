@@ -4,7 +4,7 @@
 {% if can('edit') %}
 <div class="card" style="margin-bottom:16px"><h2>Add an item</h2>
   <form method="post" action="{{ url_for('stock_new') }}" class="filters" style="margin:0">{{ csrf }}
-    <input name="name" placeholder="Item, e.g. HP 12A toner" required><input name="unit" placeholder="Unit (nos, boxes, m)" style="width:150px">
+    <input name="name" placeholder="Item, e.g. HP 12A toner" required aria-label="Item, e.g. HP 12A toner"><input name="unit" placeholder="Unit (nos, boxes, m)" style="width:150px" aria-label="Unit (nos, boxes, m)">
     <input type="number" name="min_level" min="0" step="any" placeholder="Reorder at" style="width:120px" aria-label="Minimum level">
     <select name="department_id" aria-label="Department"><option value="">All departments</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select>
     <select name="room_id" aria-label="Stored in"><option value="">Stored in…</option>{% for r in rooms %}<option value="{{ r.id }}">{{ r.building }} · {{ r.name }}</option>{% endfor %}</select>

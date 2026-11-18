@@ -15,10 +15,10 @@
   {% if parent and not a %}<input type="hidden" name="parent" value="{{ parent.id }}">{% endif %}
   <h2>What it is</h2>
   <div class="form-grid">
-    <label>Name * <input name="name" required value="{{ f.name or '' }}" placeholder="e.g. L1-PC-07, Core Switch"></label>
-    <label>Asset tag <input name="tag" value="{{ f.tag or '' }}" placeholder="Leave blank to generate the next permanent tag">
+    <label>Name * <input name="name" required value="{{ f.name or '' }}" placeholder="e.g. L1-PC-07, Core Switch" aria-label="e.g. L1-PC-07, Core Switch"></label>
+    <label>Asset tag <input name="tag" value="{{ f.tag or '' }}" placeholder="Leave blank to generate the next permanent tag" aria-label="Leave blank to generate the next permanent tag">
       {% if a %}<span class="hint">Changing a tag needs an admin and a reason. The old tag stays searchable.</span>{% endif %}</label>
-    {% if a %}<label class="full">Reason for changing the tag <input name="tag_reason" placeholder="Only if you changed the tag above"></label>{% endif %}
+    {% if a %}<label class="full">Reason for changing the tag <input name="tag_reason" placeholder="Only if you changed the tag above" aria-label="Only if you changed the tag above"></label>{% endif %}
     <label>Category <select name="category_id"><option value="">—</option>
       {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if f.category_id|string == c.id|string }}>{{ c.name }}</option>{% endfor %}</select></label>
     <label>Condition <select name="condition">{% for s in CONDITIONS %}<option {{ 'selected' if (f.condition or 'Working') == s }}>{{ s }}</option>{% endfor %}</select></label>
@@ -29,8 +29,8 @@
     <label>Brand <input name="brand" value="{{ f.brand or '' }}"></label>
     <label>Model <input name="model" value="{{ f.model or '' }}"></label>
     <label>Serial number <input name="serial_no" value="{{ f.serial_no or '' }}"></label>
-    <label>Old asset code <input name="legacy_code" value="{{ f.legacy_code or '' }}" placeholder="Code from an older register or system"></label>
-    <label>IP address <input name="ip_address" value="{{ f.ip_address or '' }}" placeholder="for networked devices"></label>
+    <label>Old asset code <input name="legacy_code" value="{{ f.legacy_code or '' }}" placeholder="Code from an older register or system" aria-label="Code from an older register or system"></label>
+    <label>IP address <input name="ip_address" value="{{ f.ip_address or '' }}" placeholder="for networked devices" aria-label="for networked devices"></label>
     <label>MAC address <input name="mac_address" value="{{ f.mac_address or '' }}"></label>
   </div>
 
@@ -52,7 +52,7 @@
       {% for b in buildings %}<optgroup label="{{ b.name }}">
         {% for r in rooms if r.building_id == b.id %}<option value="{{ r.id }}" {{ 'selected' if f.room_id|string == r.id|string }}>{{ r.name }}</option>{% endfor %}
       </optgroup>{% endfor %}</select></label>
-    <label>Rack / position <input name="rack" value="{{ f.rack or '' }}" placeholder="e.g. Rack 2, U12 (network rooms)"></label>
+    <label>Rack / position <input name="rack" value="{{ f.rack or '' }}" placeholder="e.g. Rack 2, U12 (network rooms)" aria-label="e.g. Rack 2, U12 (network rooms)"></label>
     <label class="check"><input type="checkbox" name="location_unresolved" value="1" {{ 'checked' if f.location_unresolved }}> Location not known yet (flag for follow-up)</label>
     {% endif %}
   </div>

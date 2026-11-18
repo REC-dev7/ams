@@ -71,13 +71,13 @@
         <div class="form-grid">
           <label>Now held by <select name="to">{% for h in HOLDERS %}<option>{{ h }}</option>{% endfor %}</select></label>
           <label>Department <select name="department_id"><option value="">—</option>{% for d in departments %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>
-          <label>Person (if a person holds it) <input name="person" placeholder="Name"></label>
+          <label>Person (if a person holds it) <input name="person" placeholder="Name" aria-label="Name"></label>
           <label>Due back (loans) <input type="date" name="due_date"></label>
           <label>New room (if it moves) <select name="room_id"><option value="">Stays in {{ a.room or 'its room' }}</option>
             {% for b in buildings %}<optgroup label="{{ b.name }}">{% for r in rooms if r.building_id == b.id %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
           <label>Date it happened <input type="date" name="event_date" value="{{ today }}" max="{{ today }}"></label>
-          <label class="full">Why? * <input name="reason" required placeholder="e.g. new lab setup, repair finished, staff left"></label>
-          <label class="full">Approval reference (if any) <input name="approval_ref" placeholder="e.g. HOD email, memo number"></label>
+          <label class="full">Why? * <input name="reason" required placeholder="e.g. new lab setup, repair finished, staff left" aria-label="e.g. new lab setup, repair finished, staff left"></label>
+          <label class="full">Approval reference (if any) <input name="approval_ref" placeholder="e.g. HOD email, memo number" aria-label="e.g. HOD email, memo number"></label>
         </div>
         <div><button class="btn">Save</button></div>
       </form></details>
@@ -96,8 +96,8 @@
       <div class="form-grid">
         <label>Move to <select name="to_stage">{% for n in next_stages %}<option>{{ n }}</option>{% endfor %}</select></label>
         <label>Date it happened <input type="date" name="event_date" value="{{ today }}" max="{{ today }}"></label>
-        <label class="full">Why? * <input name="reason" required placeholder="e.g. beyond repair, accepted after inspection"></label>
-        <label class="full">Evidence reference (needed to dispose) <input name="evidence" placeholder="e.g. e-waste receipt no, certificate no"></label>
+        <label class="full">Why? * <input name="reason" required placeholder="e.g. beyond repair, accepted after inspection" aria-label="e.g. beyond repair, accepted after inspection"></label>
+        <label class="full">Evidence reference (needed to dispose) <input name="evidence" placeholder="e.g. e-waste receipt no, certificate no" aria-label="e.g. e-waste receipt no, certificate no"></label>
       </div>
       <label class="check"><input type="checkbox" name="data_erased" value="1"> Stored data was erased (computers, servers, disks)</label>
       <div class="muted" style="font-size:12px">Retirement: one person proposes, a different HOD or admin approves, then it waits for disposal.</div>
@@ -144,8 +144,8 @@
     {% else %}<tr><td colspan="6" class="empty">No interfaces recorded.</td></tr>{% endfor %}</tbody>
   </table></div>
   {% if can('edit') %}<form method="post" action="{{ url_for('interface_add', aid=a.id) }}" class="filters" style="margin:12px 18px">{{ csrf }}
-    <input name="name" placeholder="Port, e.g. Gi1/0/12" required><input name="mac" placeholder="MAC"><input name="ip" placeholder="IP"><input name="vlan" placeholder="VLAN" style="width:90px">
-    <input name="connected_to" placeholder="Connected to"><button class="btn sm">Add</button></form>{% endif %}
+    <input name="name" placeholder="Port, e.g. Gi1/0/12" required aria-label="Port, e.g. Gi1/0/12"><input name="mac" placeholder="MAC" aria-label="MAC"><input name="ip" placeholder="IP" aria-label="IP"><input name="vlan" placeholder="VLAN" style="width:90px" aria-label="VLAN">
+    <input name="connected_to" placeholder="Connected to" aria-label="Connected to"><button class="btn sm">Add</button></form>{% endif %}
 </div>
 {% endif %}
 
@@ -158,8 +158,8 @@
   {% if can('edit') %}
   <form method="post" action="{{ url_for('asset_identifier', aid=a.id) }}" class="filters" style="margin:12px 0 0">{{ csrf }}
     <select name="kind" aria-label="Kind"><option value="legacy_code">Old asset code</option><option value="external">Other system ID</option></select>
-    <input name="value" placeholder="Code or ID" required>
-    <input name="source" placeholder="From which system (for IDs)">
+    <input name="value" placeholder="Code or ID" required aria-label="Code or ID">
+    <input name="source" placeholder="From which system (for IDs)" aria-label="From which system (for IDs)">
     <button class="btn sm">Add</button>
   </form>{% endif %}
 </div>
@@ -175,7 +175,7 @@
           <td>{{ p.brand or '' }} {{ p.model or '' }}</td><td class="mono">{{ p.serial_no or '' }}</td><td>{{ status(p.status) }}{% if p.archived_at %} <span class="chip plain bad">replaced</span>{% endif %}</td>
           {% if can('edit') %}<td>{% if not p.archived_at %}<details class="drop"><summary class="btn sm ghost">Replace</summary>
             <form method="post" action="{{ url_for('part_replace', aid=p.id) }}" class="filters" style="margin:6px 0 0">{{ csrf }}
-              <input name="brand" placeholder="New brand" style="width:110px"><input name="serial_no" placeholder="New serial" style="width:120px"><input name="reason" placeholder="Why" required style="width:150px"><button class="btn sm">Replace</button></form></details>{% endif %}</td>{% endif %}</tr>
+              <input name="brand" placeholder="New brand" style="width:110px" aria-label="New brand"><input name="serial_no" placeholder="New serial" style="width:120px" aria-label="New serial"><input name="reason" placeholder="Why" required style="width:150px" aria-label="Why"><button class="btn sm">Replace</button></form></details>{% endif %}</td>{% endif %}</tr>
     {% else %}<tr><td colspan="6" class="empty">No parts recorded. {% if can('edit') %}<a href="{{ url_for('asset_new', parent=a.id) }}">Add RAM, disk, monitor…</a>{% endif %}</td></tr>{% endfor %}
     </tbody>
   </table></div>
@@ -197,7 +197,7 @@
     <details class="drop">
       <summary class="head" style="margin:0"><h2 style="margin:0">Issues</h2><span class="btn sm">Report issue</span></summary>
       <form method="post" action="{{ url_for('issue_new', aid=a.id) }}" enctype="multipart/form-data" class="stack" style="margin-bottom:16px">{{ csrf }}
-        <label>What's wrong? <input name="title" required placeholder="e.g. System not booting, network weak"></label>
+        <label>What's wrong? <input name="title" required placeholder="e.g. System not booting, network weak" aria-label="e.g. System not booting, network weak"></label>
         <div class="form-grid">
           <label>Type <select name="type">{% for t in ISSUE_TYPES %}<option>{{ t }}</option>{% endfor %}</select></label>
           <label>Priority <select name="priority">{% for p in PRIORITIES %}<option {{ 'selected' if p == 'Medium' }}>{{ p }}</option>{% endfor %}</select></label>
@@ -218,7 +218,7 @@
         <p><b>Fix:</b> {{ i.resolution or '—' }} <span class="muted">({{ i.resolved_at[:16] }}{% if i.resolver %}, {{ i.resolver }}{% endif %})</span></p>
       {% elif can('edit') %}
         <form method="post" action="{{ url_for('issue_resolve', iid=i.id) }}" class="actions" style="margin-top:8px">{{ csrf }}
-          <input name="resolution" placeholder="What was done?" style="flex:1;min-width:160px">
+          <input name="resolution" placeholder="What was done?" style="flex:1;min-width:160px" aria-label="What was done?">
           <label class="check"><input type="checkbox" name="mark_working" value="1" checked> Condition back to Working</label>
           <button class="btn sm">Resolve</button>
         </form>
@@ -235,12 +235,12 @@
         <div class="form-grid">
           <label>Date <input type="date" name="date" value="{{ today }}" required></label>
           <label>Type <select name="type">{% for t in SERVICE_TYPES %}<option>{{ t }}</option>{% endfor %}</select></label>
-          <label>Done by <input name="done_by" placeholder="{{ user.name }}"></label>
+          <label>Done by <input name="done_by" placeholder="{{ user.name }}" aria-label="{{ user.name }}"></label>
           <label>Cost (₹) <input type="number" step="0.01" min="0" name="cost"></label>
           <label>Next service due <input type="date" name="next_due"></label>
           <label>Condition afterwards <select name="condition"><option value="">(no change)</option>{% for s in CONDITIONS %}<option>{{ s }}</option>{% endfor %}</select></label>
         </div>
-        <label>Work done <textarea name="description" placeholder="e.g. Replaced SMPS, cleaned dust, reinstalled OS"></textarea></label>
+        <label>Work done <textarea name="description" placeholder="e.g. Replaced SMPS, cleaned dust, reinstalled OS" aria-label="e.g. Replaced SMPS, cleaned dust, reinstalled OS"></textarea></label>
         <div><button class="btn">Save service</button></div>
       </form>
     </details>
@@ -265,7 +265,7 @@
   </ul>
   {% if can('admin') and not a.archived_at %}
   <form method="post" action="{{ url_for('asset_delete', aid=a.id) }}" class="filters" onsubmit="return confirm('Archive {{ a.tag }}? It leaves the active lists, but its record, history and tag are kept.')" style="margin-top:16px">{{ csrf }}
-    <input name="reason" placeholder="Why archive it? (entered by mistake, duplicate…)" required style="min-width:280px">
+    <input name="reason" placeholder="Why archive it? (entered by mistake, duplicate…)" required style="min-width:280px" aria-label="Why archive it? (entered by mistake, duplicate…)">
     <button class="btn danger sm">Archive asset</button>
   </form>
   {% endif %}

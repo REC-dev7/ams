@@ -14,7 +14,7 @@
           <select name="how" aria-label="Decision" style="width:auto">
             {% if f.kind == 'Wrong location' %}<option value="move">Update the record: it is here now</option><option value="keep">Keep the record: it is only here for now</option>{% endif %}
             <option value="dismiss">Dismiss (not equipment / counted already)</option></select>
-          <input name="note" placeholder="Why" required style="min-width:150px">
+          <input name="note" placeholder="Why" required style="min-width:150px" aria-label="Why">
           <button class="btn sm">Save</button>
           {% if f.kind == 'Unregistered' and can('edit') %}<a class="btn sm ghost" href="{{ url_for('asset_new', room=f.room_id) }}">Add as an asset</a>{% endif %}
         </form>

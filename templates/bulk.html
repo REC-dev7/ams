@@ -17,7 +17,7 @@
   <div class="form-grid">
     {% if action == 'department' %}<label>Department <select name="department_id"><option value="">Choose…</option>{% for d in departments %}<option value="{{ d.id }}" {{ 'selected' if fields.department_id == d.id|string }}>{{ d.name }}</option>{% endfor %}</select></label>{% endif %}
     <label>Date it happened <input type="date" name="event_date" value="{{ fields.event_date or today }}" max="{{ today }}"></label>
-    <label class="full">Why? * <input name="reason" required value="{{ fields.reason }}" placeholder="e.g. new lab setup"></label>
+    <label class="full">Why? * <input name="reason" required value="{{ fields.reason }}" placeholder="e.g. new lab setup" aria-label="e.g. new lab setup"></label>
     <label class="full">Approval reference (if any) <input name="approval_ref" value="{{ fields.approval_ref }}"></label>
   </div>
   <p class="muted" style="font-size:13px;margin:0">Fill this in and press <b>Preview again</b> to see what would happen, then <b>Do it</b>.</p>
