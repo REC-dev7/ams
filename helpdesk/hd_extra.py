@@ -182,7 +182,7 @@ def init(A):
 
     # ---------- service rules: fix-by hours, quiet limit, auto-assign (admin edits them; no code change needed) ----------
 
-    defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0"}
+    defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0", "auto_close_days": "0"}
     A.app_settings_cache = dict(defaults)
 
     @app.before_request
@@ -211,6 +211,11 @@ def init(A):
                 flash("Hours must be whole numbers from 1 to 2000.", "error")
                 return redirect(url_for("settings"))
             new[key] = str(v)
+        days = A.opt_int(f.get("auto_close_days")) if f.get("auto_close_days") not in (None, "") else 0
+        if days is None or days > 60:
+            flash("Auto-close days must be a whole number from 0 (never) to 60.", "error")
+            return redirect(url_for("settings"))
+        new["auto_close_days"] = str(days)
         new["auto_assign"] = "1" if f.get("auto_assign") else "0"
         db().executemany("INSERT INTO app_settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", list(new.items()))
         db().commit()
@@ -280,6 +285,7 @@ def init(A):
             "overdue": sum(1 for t in rows if t["status"] in ("Open", "In progress") and t["due_at"] and t["due_at"] < stamp),
             "fixed": len(done), "sla": round(100 * met / len(timed)) if timed else None, "sla_n": len(timed),
             "first": round(statistics.median(first), 1) if first else None, "fix": round(statistics.median(fix), 1) if fix else None,
+            "rating": round(statistics.mean(rated), 1) if (rated := [t["rating"] for t in rows if t["rating"]]) else None, "rated_n": len(rated),
         }
         return render_template("analytics.html", days=days, stats=stats,
                                by_month=[{"label": k, "raised": months[k], "closed": closed[k], "r": round(100 * months[k] / top_month), "c": round(100 * closed[k] / top_month)} for k in keys],
@@ -330,7 +336,22 @@ def init(A):
         if g.get("user") and request.method == "GET" and time.time() - last_check["at"] > 300:
             last_check["at"] = time.time()
             run_due()
+            auto_close()
             send_reminders()
+
+    def auto_close():
+        """When switched on: a resolved ticket nobody confirmed or reopened within N days is closed, with a note saying so."""
+        days = int(A.app_settings_cache.get("auto_close_days") or 0)
+        if not days:
+            return
+        stamp, cut = A.now(), (datetime.now() - timedelta(days=days)).strftime(A.FMT)
+        for t in q("SELECT id FROM tickets WHERE status='Resolved' AND resolved_at < ?", (cut,)):
+            # only this update may close it, so two server workers can't both write the note
+            if db().execute("UPDATE tickets SET status='Closed', updated_at=? WHERE id=? AND status='Resolved'", (stamp, t["id"])).rowcount:
+                db().execute("INSERT INTO status_log(ticket_id, user_id, from_status, to_status, at) VALUES (?, NULL, 'Resolved', 'Closed', ?)", (t["id"], stamp))
+                db().execute("INSERT INTO comments(ticket_id, user_id, body, system, at) VALUES (?, NULL, ?, 1, ?)",
+                             (t["id"], f"Closed automatically: no reply {days} day(s) after it was resolved", stamp))
+        db().commit()
 
     def send_reminders():
         """Once a day: overdue and quiet tickets to the Chat space, and each technician their own by email.

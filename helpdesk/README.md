@@ -78,7 +78,9 @@ All in `hd_extra.py`.
 
 Defaults: Critical 4 h · High 1 day · Medium 3 days · Low 7 days, counted from when the ticket was raised; a ticket with no update for 24 h is flagged.
 An admin changes these under *Places & departments → Service rules* (new times apply to tickets raised after saving).
-The same box switches on **auto-assign**: each new ticket goes to the technician in its team with the fewest open tickets. Off by default.
+The same box switches on **auto-assign** (each new ticket goes to the technician in its team with the fewest open tickets) and **auto-close** (a resolved ticket nobody confirmed or reopened within N days is closed, with a note). Both are off by default.
+
+When the requester confirms a fix they can **rate it 1 to 5**; the average shows on *Analytics*.
 
 ## Before real use
 

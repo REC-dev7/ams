@@ -71,6 +71,7 @@ DEFAULT_CATEGORIES = [
 ]
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS login_failures (username TEXT NOT NULL, at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')));
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
   password_hash TEXT NOT NULL, role TEXT NOT NULL, extra_roles TEXT, department_id INTEGER);
@@ -266,6 +267,25 @@ def init_db():
                 c.execute("INSERT INTO custody(asset_id, holder_type, person, due_date, started_on, reason) VALUES (?,?,?,?,date('now'),'Lent out (moved from the old lending list)')",
                           (a[0], "Person", a[1], a[2]))
         c.execute("UPDATE assets SET assigned_to=NULL, assigned_due=NULL WHERE assigned_to IS NOT NULL")
+        # indexes for lists, reports and history; made after the columns above exist
+        c.executescript("""
+          CREATE INDEX IF NOT EXISTS assets_room ON assets(room_id);
+          CREATE INDEX IF NOT EXISTS assets_parent ON assets(parent_id);
+          CREATE INDEX IF NOT EXISTS assets_category ON assets(category_id);
+          CREATE INDEX IF NOT EXISTS assets_managing ON assets(managing_dept_id);
+          CREATE INDEX IF NOT EXISTS assets_using ON assets(using_dept_id);
+          CREATE INDEX IF NOT EXISTS assets_status ON assets(status);
+          CREATE INDEX IF NOT EXISTS assets_legacy ON assets(legacy_code);
+          CREATE INDEX IF NOT EXISTS activity_asset ON activity(asset_id);
+          CREATE INDEX IF NOT EXISTS issues_asset ON issues(asset_id, status);
+          CREATE INDEX IF NOT EXISTS services_asset ON services(asset_id);
+          CREATE INDEX IF NOT EXISTS photos_asset ON photos(asset_id);
+          CREATE INDEX IF NOT EXISTS asset_ids_asset ON asset_ids(asset_id);
+          CREATE INDEX IF NOT EXISTS custody_asset ON custody(asset_id);
+          CREATE INDEX IF NOT EXISTS document_links_asset ON document_links(asset_id);
+          CREATE INDEX IF NOT EXISTS staged_rows_batch ON staged_rows(batch_id);
+          CREATE INDEX IF NOT EXISTS stock_moves_item ON stock_movements(item_id);
+          CREATE INDEX IF NOT EXISTS login_failures_user ON login_failures(username, at);""")
 
 
 def derive_status(a):
@@ -408,7 +428,7 @@ def opt_float(v, label):
 
 # ---------- auth ----------
 
-PUBLIC = {"login", "setup", "static"}
+PUBLIC = {"login", "setup", "static", "healthz"}
 API_POST = set()  # bearer-token endpoints that take a JSON body instead of a form, so no CSRF token
 
 
@@ -530,16 +550,33 @@ def setup():
     return render_template("setup.html")
 
 
+@app.route("/healthz")
+def healthz():
+    """For an uptime monitor: 200 'ok' when the app and its database answer. Shows nothing else."""
+    q("SELECT 1")
+    return "ok", 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u = q("SELECT * FROM users WHERE username=?", (request.form.get("username", "").strip().lower(),), one=True)
-        if u and check_password_hash(u["password_hash"], request.form.get("password", "")):
+        name = request.form.get("username", "").strip().lower()
+        # ponytail: counted per username (behind a proxy every visitor shares one address); someone guessing can lock that name for 15 minutes
+        tries = q("SELECT COUNT(*) n FROM login_failures WHERE username=? AND at >= datetime('now', 'localtime', '-15 minutes')", (name,), one=True)["n"]
+        u = q("SELECT * FROM users WHERE username=?", (name,), one=True)
+        if tries >= 5:
+            flash("Too many wrong passwords for this username. Wait 15 minutes, or ask an admin to reset the password.", "error")
+        elif u and check_password_hash(u["password_hash"], request.form.get("password", "")):
+            db().execute("DELETE FROM login_failures WHERE username=? OR at < datetime('now', 'localtime', '-1 day')", (name,))
+            db().commit()
             session.clear()
             session["uid"] = u["id"]
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
-        flash("Wrong username or password.", "error")
+        else:
+            db().execute("INSERT INTO login_failures(username) VALUES (?)", (name[:80],))
+            db().commit()
+            flash("Wrong username or password.", "error")
     return render_template("login.html", demo=[(u, n, ROLE_LABEL[r]) for u, n, r, _ in DEMO_USERS] if app.config.get("DEMO") else [])
 
 

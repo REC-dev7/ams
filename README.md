@@ -63,6 +63,16 @@ Run `--verify` after each backup and try a restore now and then. A backup you ha
 
 `API.md` describes the read-only API. `DATA_DICTIONARY.md` and `PERMISSIONS.md` are generated from the code (`python docs/make_docs.py`). `ERD.md` shows how records connect. `OPEN_DECISIONS.md` lists what the college still has to decide. `RELEASE_CHECKLIST.md` is the pre-pilot list. **`DEPLOY_COLLEGE_SERVER.md` is the step-by-step guide for the college server** (machine size, services, HTTPS, backups, virus scanning, go-live and rollout).
 
+## Before real use
+
+```
+python app.py --remove-demo                                     # delete the demo accounts (refuses until a real admin exists)
+python loadtest.py http://SERVER --users 150 --login USER:PASS    # many users at once; same for the Helpdesk
+```
+
+Set `UPLOAD_SCAN=1` to check every upload with ClamAV (`clamscan`); a file that fails, or can't be scanned, is refused.
+`/healthz` answers `ok` for an uptime monitor. Five wrong passwords in 15 minutes lock that username for 15 minutes.
+
 ## Test
 
 ```

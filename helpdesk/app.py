@@ -59,6 +59,7 @@ DEPARTMENTS = ["CSE", "CSE (AIML)", "CSE (Cyber Security)", "IT", "ECE", "EEE", 
 FMT = "%Y-%m-%d %H:%M:%S"
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS login_failures (username TEXT NOT NULL, at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')));
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, name TEXT NOT NULL,
   password_hash TEXT NOT NULL, role TEXT NOT NULL, department TEXT, team TEXT, email TEXT);
@@ -90,7 +91,7 @@ MIGRATIONS = {
     "tickets": [("request_type", "TEXT DEFAULT 'Fault'"), ("team", "TEXT"), ("department", "TEXT"),
                 ("location_id", "INTEGER REFERENCES locations(id)"), ("urgent_reason", "TEXT"), ("first_response_at", "TEXT"),
                 ("updated_at", "TEXT"), ("parent_id", "INTEGER REFERENCES tickets(id)"), ("parts_used", "TEXT"),
-                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT")],
+                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT"), ("rating", "INTEGER")],
     "comments": [("internal", "INTEGER DEFAULT 0")],
 }
 
@@ -153,6 +154,18 @@ def init_db():
         c.execute("UPDATE tickets SET updated_at=COALESCE(resolved_at, created_at) WHERE updated_at IS NULL")
         c.execute("UPDATE tickets SET request_type='Fault' WHERE request_type IS NULL")
         c.executemany("INSERT OR IGNORE INTO departments(name) VALUES (?)", [(d,) for d in DEPARTMENTS])
+        # indexes for the lists and the "same problem again" count; made after the columns above exist
+        c.executescript("""
+          CREATE INDEX IF NOT EXISTS tickets_repeat ON tickets(location, category, created_at);
+          CREATE INDEX IF NOT EXISTS tickets_parent ON tickets(parent_id);
+          CREATE INDEX IF NOT EXISTS tickets_status ON tickets(status, due_at);
+          CREATE INDEX IF NOT EXISTS tickets_raised ON tickets(raised_by);
+          CREATE INDEX IF NOT EXISTS tickets_assigned ON tickets(assigned_to);
+          CREATE INDEX IF NOT EXISTS tickets_dept ON tickets(department);
+          CREATE INDEX IF NOT EXISTS comments_ticket ON comments(ticket_id);
+          CREATE INDEX IF NOT EXISTS status_log_ticket ON status_log(ticket_id);
+          CREATE INDEX IF NOT EXISTS attachments_ticket ON attachments(ticket_id);
+          CREATE INDEX IF NOT EXISTS login_failures_user ON login_failures(username, at);""")
 
 
 def opt_int(v):
@@ -290,7 +303,7 @@ def asset_choices():
 
 # ---------- auth ----------
 
-PUBLIC = {"login", "setup", "static"}
+PUBLIC = {"login", "setup", "static", "healthz"}
 
 
 @app.before_request
@@ -406,16 +419,33 @@ def setup():
     return render_template("setup.html")
 
 
+@app.route("/healthz")
+def healthz():
+    """For an uptime monitor: 200 'ok' when the app and its database answer. Shows nothing else."""
+    q("SELECT 1")
+    return "ok", 200, {"Content-Type": "text/plain", "Cache-Control": "no-store"}
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        u = q("SELECT * FROM users WHERE username=?", (request.form.get("username", "").strip().lower(),), one=True)
-        if u and check_password_hash(u["password_hash"], request.form.get("password", "")):
+        name = request.form.get("username", "").strip().lower()
+        # ponytail: counted per username (behind a proxy every visitor shares one address); someone guessing can lock that name for 15 minutes
+        tries = q("SELECT COUNT(*) n FROM login_failures WHERE username=? AND at >= datetime('now', 'localtime', '-15 minutes')", (name,), one=True)["n"]
+        u = q("SELECT * FROM users WHERE username=?", (name,), one=True)
+        if tries >= 5:
+            flash("Too many wrong passwords for this username. Wait 15 minutes, or ask an admin to reset the password.", "error")
+        elif u and check_password_hash(u["password_hash"], request.form.get("password", "")):
+            db().execute("DELETE FROM login_failures WHERE username=? OR at < datetime('now', 'localtime', '-1 day')", (name,))
+            db().commit()
             session.clear()
             session["uid"] = u["id"]
             nxt = request.args.get("next", "")
             return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else url_for("dashboard"))
-        flash("Wrong username or password.", "error")
+        else:
+            db().execute("INSERT INTO login_failures(username) VALUES (?)", (name[:80],))
+            db().commit()
+            flash("Wrong username or password.", "error")
     return render_template("login.html", demo=[(u, n, ROLE_LABEL[r]) for u, n, r, _, _ in DEMO_USERS] if app.config.get("DEMO") else [])
 
 
@@ -842,7 +872,10 @@ def ticket_close(tid):
     """The requester confirms the fix (or IT closes it). IT also closes a procurement-list item once delivered."""
     t = get_ticket(tid)
     if t["status"] == "Resolved" and can_confirm(t):
-        set_status(t, "Closed", "Confirmed fixed and closed")
+        # the person who raised it may rate the fix, 1 (poor) to 5 (very good); optional
+        r = opt_int(request.form.get("rating"))
+        r = r if r in range(1, 6) and t["raised_by"] == g.user["id"] else None
+        set_status(t, "Closed", "Confirmed fixed and closed" + (f" · rated {r}/5" if r else ""), **({"rating": r} if r else {}))
         db().commit()
         flash("Ticket closed.", "ok")
     elif t["status"] == "Planned" and g.user["role"] in MANAGE:

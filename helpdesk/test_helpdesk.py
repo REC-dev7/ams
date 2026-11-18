@@ -564,6 +564,67 @@ def test_upload_virus_scan():
         os.environ.pop("UPLOAD_SCAN", None)
 
 
+def test_login_lockout():
+    m.DB = os.path.join(tempfile.mkdtemp(), "lk.db")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    for _ in range(5):
+        login(c, "admin", "nope")
+    r = post(c, "/login", {"username": "admin", "password": "demo-admin-2026"}, "/login")
+    assert r.status_code == 200 and b"Too many wrong passwords" in r.data
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE login_failures SET at=datetime('now', 'localtime', '-20 minutes')")
+    assert login(c, "admin", "demo-admin-2026").status_code == 302
+
+
+def test_rating_auto_close_and_health():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "rc.db")
+    m.init_db()
+    m.seed_demo()
+    x.last_check["at"] = time.time()
+    c = m.app.test_client()
+    assert c.get("/healthz").data == b"ok"  # no sign-in needed, shows nothing else
+
+    # the requester rates the fix when confirming it; nobody else can, and odd values are ignored
+    login(c, "staff", "demo-staff-2026")
+    a, b = raise_ticket(c, "Mouse broken", location="Lab 1"), raise_ticket(c, "Keyboard broken", location="Lab 1")
+    login(c, "tech", "demo-tech-2026")
+    for tid in (a, b):
+        post(c, f"/tickets/{tid}/resolve", {"resolution": "Replaced"}, f"/tickets/{tid}")
+    post(c, f"/tickets/{b}/close", {"rating": "1"}, f"/tickets/{b}")  # IT closing: no rating recorded
+    assert row("SELECT status, rating FROM tickets WHERE id=?", b)["rating"] is None
+    login(c, "staff", "demo-staff-2026")
+    assert b"Rate the fix" in c.get(f"/tickets/{a}").data
+    post(c, f"/tickets/{a}/close", {"rating": "4"}, f"/tickets/{a}")
+    t = row("SELECT status, rating FROM tickets WHERE id=?", a)
+    assert (t["status"], t["rating"]) == ("Closed", 4)
+    assert b"Rated 4/5" in c.get(f"/tickets/{a}").data
+    login(c, "admin", "demo-admin-2026")
+    assert b"4.0 / 5" in c.get("/analytics").data
+
+    # auto-close: off by default; when on, a resolved ticket with no answer for N days is closed with a note
+    login(c, "tech", "demo-tech-2026")
+    d = raise_ticket(c, "Old fix", location="Lab 2")
+    post(c, f"/tickets/{d}/resolve", {"resolution": "Done"}, f"/tickets/{d}")
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE tickets SET resolved_at=datetime('now', 'localtime', '-5 days') WHERE id=?", (d,))
+    x.last_check["at"] = 0
+    c.get("/")
+    assert row("SELECT status FROM tickets WHERE id=?", d)["status"] == "Resolved"
+    login(c, "admin", "demo-admin-2026")
+    bad = post(c, "/settings/rules", {"sla_Critical": "4", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24", "auto_close_days": "99"}, "/settings")
+    assert b"from 0 (never) to 60" in c.get(bad.location, follow_redirects=True).data
+    post(c, "/settings/rules", {"sla_Critical": "4", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24", "auto_close_days": "3"}, "/settings")
+    x.last_check["at"] = 0
+    c.get("/")
+    assert row("SELECT status FROM tickets WHERE id=?", d)["status"] == "Closed"
+    assert row("SELECT 1 FROM comments WHERE ticket_id=? AND body LIKE 'Closed automatically%'", d)
+    assert row("SELECT status FROM tickets WHERE id=?", a)["status"] == "Closed"  # untouched
+    x.last_check["at"] = time.time()
+
+
 if __name__ == "__main__":
     test_flow()
     test_old_database_upgrades()
@@ -575,4 +636,6 @@ if __name__ == "__main__":
     test_service_rules_and_auto_assign()
     test_remove_demo_accounts()
     test_upload_virus_scan()
+    test_login_lockout()
+    test_rating_auto_close_and_health()
     print("ok")

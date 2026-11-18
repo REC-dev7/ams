@@ -159,7 +159,8 @@ Both apps upgrade their own databases at start-up. Take a backup first. To go ba
 ## 10. Watching it
 
 - Logs: `journalctl -u rec-ams -u rec-helpdesk --since today`.
-- An outside check every few minutes on `/login` of each app (any uptime monitor) alerting the IT team.
+- An outside check every few minutes on `/healthz` of each app (any uptime monitor) alerting the IT team: it answers `ok` when the app and its database respond, and needs no sign-in.
+- Five wrong passwords in 15 minutes lock that username for 15 minutes (an admin can reset the password meanwhile).
 
 ## Not covered yet
 

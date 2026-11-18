@@ -350,6 +350,15 @@ Software the college has the right to use: quantity, renewal, key (visible to pu
 | archived_at | TEXT |  |
 | created_at | TEXT | default CURRENT_TIMESTAMP |
 
+## login_failures
+
+
+
+| Field | Type | Notes |
+|---|---|---|
+| username | TEXT | required |
+| at | TEXT | required, default datetime('now', 'localtime') |
+
 ## photos
 
 Pictures of an asset or issue.

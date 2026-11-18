@@ -930,6 +930,23 @@ def test_upload_virus_scan():
         os.environ.pop("UPLOAD_SCAN", None)
 
 
+def test_login_lockout():
+    m.DB = os.path.join(tempfile.mkdtemp(), "lk.db")
+    m.UPLOADS = os.path.join(os.path.dirname(m.DB), "uploads")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    for _ in range(5):
+        assert b"Wrong username or password" in post(c, "/login", {"username": "admin", "password": "nope"}, "/login").data
+    r = post(c, "/login", {"username": "admin", "password": "demo-admin-2026"}, "/login")
+    assert r.status_code == 200 and b"Too many wrong passwords" in r.data  # even the right password waits
+    assert login(c, "staff").status_code == 302  # other usernames are not affected
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE login_failures SET at=datetime('now', 'localtime', '-20 minutes')")
+    assert login(c, "admin").status_code == 302
+    assert row("SELECT COUNT(*) n FROM login_failures WHERE username='admin'")["n"] == 0  # cleared on success
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -942,4 +959,5 @@ if __name__ == "__main__":
     test_helpdesk_writeback()
     test_remove_demo_accounts()
     test_upload_virus_scan()
+    test_login_lockout()
     print("ok")
