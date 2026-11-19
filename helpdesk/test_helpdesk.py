@@ -423,7 +423,7 @@ def test_notifications_analytics_maintenance_writeback():
     post(c, f"/maintenance/{mid}/now", {}, "/maintenance")
     assert row("SELECT COUNT(*) n FROM tickets")["n"] == before + 1
     t = row("SELECT * FROM tickets ORDER BY id DESC LIMIT 1")
-    assert t["source"] == "Planned maintenance" and t["request_type"] == "Service request" and t["title"] == "Check UPS batteries"
+    assert t["source"] == "Planned task" and t["request_type"] == "Service request" and t["title"] == "Check UPS batteries"
     assert row("SELECT last_ticket_id FROM maintenance WHERE id=?", mid)["last_ticket_id"] == t["id"]
     other = row("SELECT id FROM maintenance WHERE title='Clean filters'")["id"]
     post(c, f"/maintenance/{other}/pause", {}, "/maintenance")
@@ -451,7 +451,7 @@ def test_due_maintenance_runs_by_itself():
     c.get("/")  # a second visit right after: no second ticket
     assert row("SELECT COUNT(*) n FROM tickets")["n"] == n + 1  # 200 days overdue is one ticket, not two
     t = row("SELECT * FROM tickets ORDER BY id DESC LIMIT 1")
-    assert t["title"] == "Check UPS" and t["source"] == "Planned maintenance"
+    assert t["title"] == "Check UPS" and t["source"] == "Planned task"
     assert row("SELECT next_due FROM maintenance")["next_due"] > datetime.now().strftime("%Y-%m-%d")
 
 

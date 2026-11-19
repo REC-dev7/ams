@@ -305,13 +305,13 @@ def init(A):
         before = g.get("user")
         g.user = creator
         try:
-            r = new_ticket({"title": m["title"], "description": (m["description"] or "") + "\n\nPlanned maintenance, raised automatically.",
+            r = new_ticket({"title": m["title"], "description": (m["description"] or "") + "\n\nPlanned task, raised automatically.",
                             "category": m["category"], "priority": m["priority"], "request_type": "Service request",
                             "location_id": str(m["location_id"] or ""), "location": m["location"] or "", "asset_tag": m["asset_tag"] or ""})
         finally:
             g.user = before
         if r:
-            db().execute("UPDATE tickets SET source='Planned maintenance' WHERE id=?", (r[0],))
+            db().execute("UPDATE tickets SET source='Planned task' WHERE id=?", (r[0],))
             after_create(r[0])
         return r[0] if r else None
 

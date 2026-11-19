@@ -37,8 +37,9 @@ CAPS = {"edit": ("super_admin", "admin", "technician"),                      # a
         "admin": ("super_admin", "admin"),                                    # masters, imports, tags, archive
         "purchase": ("super_admin", "admin", "purchase"),                     # purchase references and documents
         "users": ("super_admin", "admin"),                                    # accounts: an admin manages roles below admin; only a super admin touches admin-level ones
-        "docs": ("super_admin", "admin", "purchase", "technician", "hod", "auditor", "system_admin")}  # may open purchase documents
-STATUSES = ["Working", "Faulty", "Under service", "In store", "Scrapped", "Lost"]  # derived from stage + condition, kept for filters
+        "docs": ("super_admin", "admin", "purchase", "technician", "hod", "auditor", "system_admin"),  # may open purchase documents
+        "byod": tuple(r for r in ROLES if r != "auditor")}  # register their own device (an auditor only reads)  # may open purchase documents
+STATUSES = ["Working", "Faulty", "Under service", "In store", "To be retired", "Scrapped", "Lost"]  # derived from stage + condition, kept for filters
 LIFECYCLE = ["Requested", "Ordered", "Received (pending inspection)", "In stock", "Deployed", "Under maintenance", "Retirement proposed",
              "Retirement approved", "Awaiting disposal", "Disposed", "Lost / missing", "Returned to vendor"]
 # where an asset may go next. Retirement needs a proposal, a different person to approve it, then evidence of disposal.
@@ -51,9 +52,10 @@ LIFECYCLE_NEXT = {
     "Retirement proposed": ["Retirement approved", "In stock", "Deployed"],
     "Retirement approved": ["Awaiting disposal"], "Awaiting disposal": ["Disposed"],
     "Lost / missing": ["In stock", "Deployed", "Disposed"], "Disposed": [], "Returned to vendor": []}
+RETIRING = ("Retirement proposed", "Retirement approved", "Awaiting disposal")
 CONDITIONS = ["Working", "Faulty", "Obsolete", "Unknown"]
 VERIFICATION = ["Verified", "Not found", "Wrong location", "Unresolved"]
-ACQ_BASIS = ["Purchase", "Donation", "Transfer from another unit", "Lease / rent", "Opening stock (old record)", "Unknown"]
+ACQ_BASIS = ["Purchase", "Donation", "Transfer from another unit", "Lease / rent", "Opening stock (old record)", "Personal device (BYOD)", "Unknown"]
 COST_BASIS = ["Per unit", "Line total", "Whole purchase", "Unknown"]
 ID_KINDS = {"legacy_code": "Old asset code", "external": "Other system ID", "previous_tag": "Previous tag"}
 HOLDERS = ["Stockroom", "Department", "Person"]
@@ -259,6 +261,7 @@ def init_db():
                      WHEN 'Scrapped' THEN 'Obsolete' ELSE 'Working' END WHERE lifecycle_stage IS NULL""")
         c.execute("""UPDATE assets SET lifecycle_stage=CASE status WHEN 'Scrapped' THEN 'Disposed' WHEN 'In store' THEN 'In stock'
                      WHEN 'Under service' THEN 'Under maintenance' ELSE 'Deployed' END WHERE lifecycle_stage IS NULL""")
+        c.execute("UPDATE assets SET status='To be retired' WHERE lifecycle_stage IN ('Retirement proposed','Retirement approved','Awaiting disposal') AND archived_at IS NULL AND status!='To be retired'")
         c.execute("UPDATE assets SET verification='Verified' WHERE last_audit IS NOT NULL AND verification IS NULL")
         c.execute("UPDATE assets SET acquisition_basis='Unknown' WHERE acquisition_basis IS NULL")
         c.execute("INSERT OR IGNORE INTO counters(name, value) VALUES ('tag', (SELECT COALESCE(MAX(id), 0) FROM assets))")
@@ -301,6 +304,8 @@ def derive_status(a):
         return "Lost"
     if a["lifecycle_stage"] == "Under maintenance":
         return "Under service"
+    if a["lifecycle_stage"] in RETIRING:
+        return "To be retired"
     if a["condition"] == "Faulty":
         return "Faulty"
     if a["lifecycle_stage"] in ("Requested", "Ordered", "Received (pending inspection)", "In stock"):
@@ -897,6 +902,44 @@ def check_location(v, parent=None):
         v["room_id"], v["location_unresolved"] = parent["room_id"], parent["location_unresolved"]  # parts live where their parent lives
     elif not v["room_id"] and not v["location_unresolved"]:
         raise ValueError("Room is required (or tick 'Location unknown' to flag it for follow-up)")
+
+
+@app.route("/byod", methods=["GET", "POST"])
+@role("byod")
+def byod():
+    """Anyone but an auditor registers a personal laptop or phone they bring in. It becomes an asset held by them, marked BYOD."""
+    depts = q("SELECT id, name FROM departments ORDER BY name")
+    mine = g.user["department_id"]
+    if request.method == "POST":
+        try:
+            f = request.form
+            name, dept = (f.get("name") or "").strip(), mine or opt_int(f.get("department_id"))
+            if not name:
+                raise ValueError("Say what the device is, for example 'Ravi's Dell laptop'")
+            if not dept or not q("SELECT 1 FROM departments WHERE id=?", (dept,), one=True):
+                raise ValueError("Pick your department")
+            cat = opt_int(f.get("category_id"))
+            if cat and not q("SELECT 1 FROM categories WHERE id=?", (cat,), one=True):
+                cat = None
+            cur = db().execute("""INSERT INTO assets(tag, name, category_id, brand, model, serial_no, mac_address, notes, managing_dept_id, owning_dept_id,
+                                  using_dept_id, custodian, acquisition_basis, lifecycle_stage, condition)
+                                  VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                               (next_tag(), name, cat, (f.get("brand") or "").strip() or None, (f.get("model") or "").strip() or None,
+                                (f.get("serial_no") or "").strip() or None, (f.get("mac_address") or "").strip() or None,
+                                (f.get("notes") or "").strip() or None, dept, dept, dept, g.user["name"], "Personal device (BYOD)", "Deployed", "Working"))
+            aid = cur.lastrowid
+            db().execute("""INSERT INTO custody(asset_id, holder_type, department_id, person, started_on, started_by, reason)
+                            VALUES (?,?,?,?,?,?,?)""", (aid, "Person", dept, g.user["name"], date.today().isoformat(), g.user["id"], "Registered as own device (BYOD)"))
+            sync_status(aid)
+            log(aid, f"Registered as a personal device (BYOD) by {g.user['name']}", etype="Created")
+            db().commit()
+            flash("Your device is registered.", "ok")
+            return redirect(url_for("asset", aid=aid)) if has_role("super_admin", "admin", "technician") else redirect(url_for("byod"))
+        except ValueError as e:
+            db().rollback()
+            flash(str(e), "error")
+    mine_rows = q(ASSET_SELECT + " WHERE a.acquisition_basis='Personal device (BYOD)' AND a.custodian=? AND a.archived_at IS NULL ORDER BY a.id DESC", (g.user["name"],))
+    return render_template("byod.html", depts=depts, mine=mine, categories=q("SELECT id, name FROM categories ORDER BY name"), rows=mine_rows)
 
 
 @app.route("/assets/new", methods=["GET", "POST"])

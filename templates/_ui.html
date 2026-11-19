@@ -1,5 +1,5 @@
 {% macro status(s) -%}
-<span class="chip {{ {'Working':'good','Faulty':'bad','Under service':'warn','Lost':'bad'}.get(s, '') }}">{{ s }}</span>
+<span class="chip {{ {'Working':'good','Faulty':'bad','Under service':'warn','To be retired':'warn','Lost':'bad'}.get(s, '') }}">{{ s }}</span>
 {%- endmacro %}
 
 {% macro stage(s) -%}

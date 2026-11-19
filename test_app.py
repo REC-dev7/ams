@@ -68,6 +68,12 @@ def test_flow():
     assert b"System not booting" in c.get("/issues").data
     assert c.get("/assets?export=csv").data.startswith(b"tag,name")
 
+    # an own device (BYOD): any signed-in person but an auditor registers it; it is held by them and marked personal
+    assert c.get("/byod").status_code == 200
+    r = post(c, "/byod", {"name": "My laptop", "department_id": dept("CSE"), "serial_no": "S1"}, "/byod")
+    mine = row("SELECT * FROM assets WHERE name='My laptop'")
+    assert mine and mine["acquisition_basis"] == "Personal device (BYOD)" and mine["custodian"] == "Boss" and mine["status"] == "Working"
+    assert b"Pick your department" in post(c, "/byod", {"name": "x"}, "/byod").data
     # permanent tags come from a counter that only goes up; every asset needs a managing department and a place
     assert b"Managing department is required" in post(c, "/assets/new", {"name": "x", "room_id": "1"}, "/assets/new").data
     assert b"Room is required" in post(c, "/assets/new", {"name": "x", "managing_dept_id": dept("CSE")}, "/assets/new").data
@@ -138,6 +144,7 @@ def test_flow():
     login(c, "lab")
     post(c, f"/assets/{victim}/lifecycle", {"to_stage": "Retirement proposed", "reason": "Beyond repair"}, f"/assets/{victim}")
     assert row("SELECT lifecycle_stage FROM assets WHERE id=?", victim)["lifecycle_stage"] == "Retirement proposed"
+    assert row("SELECT status FROM assets WHERE id=?", victim)["status"] == "To be retired"
     r = post(c, f"/assets/{victim}/lifecycle", {"to_stage": "Retirement approved", "reason": "ok"}, f"/assets/{victim}")
     assert b"Only an HOD or admin" in c.get(r.location, follow_redirects=True).data
     assert c.get(f"/assets/{asset_id('Kiosk PC')}").status_code == 404  # Library's asset: not in the CSE lab assistant's department

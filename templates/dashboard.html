@@ -22,7 +22,7 @@
   {% if not limited %}<a class="kpi" href="{{ url_for('register') }}"><div class="label">Book value</div><div class="value" style="font-size:22px">₹{{ '{:,.0f}'.format(stats.book) }}</div></a>{% endif %}
 </div>
 
-{% set colors = {'Working': 'var(--good)', 'Faulty': 'var(--bad)', 'Under service': '#e8a317', 'In store': '#8a93a6', 'Scrapped': '#3b4252', 'Lost': '#b42318'} %}
+{% set colors = {'Working': 'var(--good)', 'Faulty': 'var(--bad)', 'Under service': '#e8a317', 'In store': '#8a93a6', 'To be retired': '#7c5cbf', 'Scrapped': '#3b4252', 'Lost': '#b42318'} %}
 {% set all = by_status.values()|sum %}
 <div class="card" style="margin-bottom:16px">
   <h2>Asset health</h2>

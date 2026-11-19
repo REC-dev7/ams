@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Register my device{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Register my own device</h1>
+  <div class="muted">A personal laptop or phone you bring to campus (BYOD). It is recorded as held by you and marked as a personal device.</div></div></div>
+<form method="post" class="card">{{ csrf }}
+  <div class="form-grid">
+    <label>What is it? * <input name="name" required maxlength="120" placeholder="e.g. My Dell laptop" aria-label="Device name"></label>
+    <label>Kind <select name="category_id"><option value="">—</option>{% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}</select></label>
+    <label>Brand <input name="brand" maxlength="80"></label>
+    <label>Model <input name="model" maxlength="80"></label>
+    <label>Serial no <input name="serial_no" maxlength="80"></label>
+    <label>MAC address (Wi-Fi) <input name="mac_address" maxlength="40" placeholder="Optional"></label>
+    {% if not mine %}<label>Your department * <select name="department_id" required><option value="">—</option>{% for d in depts %}<option value="{{ d.id }}">{{ d.name }}</option>{% endfor %}</select></label>{% endif %}
+    <label class="full">Notes <input name="notes" maxlength="300" placeholder="Optional"></label>
+  </div>
+  <div class="actions"><button class="btn primary">Register device</button></div>
+</form>
+<h2>My registered devices</h2>
+<div class="card"><table><thead><tr><th>Tag</th><th>Device</th><th>Serial</th><th>Status</th></tr></thead><tbody>
+{% for a in rows %}<tr><td>{{ a.tag }}</td><td>{{ a.name }}<div class="muted">{{ a.brand or '' }} {{ a.model or '' }}</div></td><td>{{ a.serial_no or '—' }}</td><td>{{ a.status }}</td></tr>
+{% else %}<tr><td colspan="4" class="muted">None yet.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}
