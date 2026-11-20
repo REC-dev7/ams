@@ -843,6 +843,8 @@ function show(view) {
   setVisible(roomG, view === "room");
   document.getElementById("hint").textContent = { campus: "Drag to rotate · scroll to zoom · click a building", building: "Click a room · floors are pulled apart so you can see inside", room: "Click a PC, rack or projector" }[view];
 }
+// hundreds of small meshes in a room or building: skipping their shadow pass halves the drawing work on slow PCs
+const noCast = (g) => g.traverse((o) => { if (o.isMesh) o.castShadow = false; });
 function goCampus() {
   Object.assign(nav, { view: "campus", b: null, r: null });
   pickables = [];
@@ -856,6 +858,7 @@ function goBuilding(bid) {
   const b = bById[bid];
   Object.assign(nav, { view: "building", b: bid, r: null });
   const { h, w } = buildBuilding(b);
+  noCast(buildingG);
   show("building");
   fly([w * 0.8, h * 0.5 + 7, w * 1.85], [w * 0.06, h / 2 - 1.5, 0]);
   crumbs();
@@ -866,6 +869,7 @@ function goRoom(rid, deviceId) {
   picked = null;
   Object.assign(nav, { view: "room", b: r.building, r: rid });
   const { RW, RD } = buildRoom(r);
+  noCast(roomG);
   show("room");
   fly([RW * 0.32, Math.max(RW, RD) * 0.6, RD * 0.82], [0, 1, 0]);
   crumbs();
@@ -977,7 +981,7 @@ function panelDevice(d) {
       <tr><th>Model</th><td>${esc(d.model)}</td></tr><tr><th>Serial</th><td>${esc(d.serial)}</td></tr><tr><th>IP</th><td>${esc(d.ip)}</td></tr>
       <tr><th>Department</th><td>${esc(d.dept)}</td></tr><tr><th>Warranty until</th><td>${esc(d.warranty)}</td></tr></tbody></table>
     ${d.software.length ? `<h3>Software (${d.software.length})${up.length ? ` <span class="chip warn">${up.length} behind</span>` : ""}</h3>
-      <ul class="soft">${d.software.map((x) => `<li><span>${esc(x.name)}${lic(x.name) ? ` <span class="chip">licensed</span>` : ""}</span><span>${esc(x.version)}${x.version !== x.newest ? ` <span class="chip warn">→ ${esc(x.newest)}</span>` : ""}</span></li>`).join("")}</ul>` : ""}
+      <ul class="soft">${d.software.slice(0, 40).map((x) => `<li><span>${esc(x.name)}${lic(x.name) ? ` <span class="chip">licensed</span>` : ""}</span><span>${esc(x.version)}${x.version !== x.newest ? ` <span class="chip warn">→ ${esc(x.newest)}</span>` : ""}</span></li>`).join("")}</ul>${d.software.length > 40 ? `<p class="muted">+ ${d.software.length - 40} more programs not listed here</p>` : ""}` : ""}
     <p class="muted" style="margin-top:14px">${d.real ? "This is the PC you are using: its numbers are read by the agent, not made up." : "Simulated. In the real system these values come from a small agent on each PC and from the AMS record."}</p>`;
 }
 function refreshPanel() {
