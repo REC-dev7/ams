@@ -70,6 +70,8 @@ def test_flow():
 
     # an own device (BYOD): any signed-in person but an auditor registers it; it is held by them and marked personal
     assert c.get("/byod").status_code == 200
+    r = c.get("/campus3d")
+    assert r.status_code == 200 and b"campus3d" in r.data and c.get("/static/campus3d/app.js").status_code == 200
     r = post(c, "/byod", {"name": "My laptop", "department_id": dept("CSE"), "serial_no": "S1"}, "/byod")
     mine = row("SELECT * FROM assets WHERE name='My laptop'")
     assert mine and mine["acquisition_basis"] == "Personal device (BYOD)" and mine["custodian"] == "Boss" and mine["status"] == "Working"

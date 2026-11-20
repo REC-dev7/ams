@@ -904,6 +904,12 @@ def check_location(v, parent=None):
         raise ValueError("Room is required (or tick 'Location unknown' to flag it for follow-up)")
 
 
+@app.route("/campus3d")
+def campus3d():
+    """The 3D campus view (simulated floors and devices on the real campus outline). Signed-in users only; its files are in static/campus3d."""
+    return send_from_directory(os.path.join(app.static_folder, "campus3d"), "index.html")
+
+
 @app.route("/byod", methods=["GET", "POST"])
 @role("byod")
 def byod():

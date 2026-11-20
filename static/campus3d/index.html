@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<base href="/static/campus3d/">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>REC Campus Live 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="logo">R</span><div><b>REC <span class="gold">Campus Live 3D</span></b><small>Buildings, labs and devices</small></div></div>
+  <a class="demo-tag" href="/" style="text-decoration:none">← Back to AMS</a>
+  <span class="demo-tag" id="demotag" title="Device data is made up and changes by itself, except the one real PC when the agent is running">Demo · simulated data</span>
+  <div class="search"><input id="search" type="search" placeholder="Find a device or room, e.g. CL1-PC-07" aria-label="Find a device or room" autocomplete="off"><div id="results" class="results" role="listbox"></div></div>
+  <div class="clock" id="clock"></div>
+</header>
+<nav class="tabs" role="tablist">
+  <button role="tab" class="tab on" data-tab="map">3D campus</button>
+  <button role="tab" class="tab" data-tab="updates">Software updates <span class="count" id="c-updates"></span></button>
+  <button role="tab" class="tab" data-tab="licences">Licences <span class="count" id="c-licences"></span></button>
+  <button role="tab" class="tab" data-tab="alerts">Alerts <span class="count" id="c-alerts"></span></button>
+</nav>
+<main class="layout">
+  <section class="stage" id="stage" aria-label="3D view">
+    <div class="hud">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="legend" id="legend"></div>
+      <div class="livepill" id="livepill" hidden></div>
+      <div class="hudrow"><button class="sky" id="tour" type="button" title="A short guided flight over the biggest buildings">▶ Tour</button><button class="sky" id="quality" type="button" title="Soft glow around lights at night">Glow: on</button></div>
+      <button class="sky" id="sky" type="button" title="Day and night follow the real clock; click to preview day or night">Live time</button>
+    </div>
+    <div class="hint" id="hint">Drag to rotate · scroll to zoom · click a building</div>
+    <div class="tip" id="tip" hidden></div>
+    <div class="loading" id="loading">Loading 3D view…</div>
+  </section>
+  <aside class="panel" id="panel" aria-live="polite"></aside>
+  <section class="page" id="overlay" hidden aria-label="Page"></section>
+</main>
+<div class="feed" id="feed" aria-live="polite"></div>
+<script>window.NO_LIVE = true;</script>
+<script src="campus_geo.js"></script>
+<script src="data.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
