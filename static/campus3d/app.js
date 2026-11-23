@@ -1414,9 +1414,21 @@ function drawFrame(dt) {
   if (quality === "high" && nightNow > 0.2) {
     bloom.strength = 0.25 + 0.7 * nightNow;
     composer.render();
-    slowFrames = dt > 0.045 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
-    if (slowFrames > 60) { setQuality("standard"); qBtn.title = "Switched off automatically: this computer is slow with it on"; } // about 3 seconds of slow frames in a row
   } else renderer.render(scene, camera);
+  slowFrames = Math.max(0, slowFrames + (dt > 0.045 ? dt : -dt)); // seconds spent below about 22 frames a second
+  if (slowFrames > 3 && level < 4) { slowFrames = 0; stepDown(); }
+}
+// a slow PC gives up one thing at a time until it is smooth: glow, then shadows, then sharpness
+let level = 0;
+function stepDown() {
+  level++;
+  if (level === 1 && quality === "high") { setQuality("standard"); qBtn.title = "Switched off automatically: this computer is slow with it on"; }
+  else if (level === 2) { renderer.shadowMap.enabled = false; scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; }); }
+  else if (level >= 3) {
+    const pr = level === 3 ? 1 : 0.7;
+    renderer.setPixelRatio(pr); composer.setPixelRatio(pr);
+    renderer.setSize(stage.clientWidth, stage.clientHeight); composer.setSize(stage.clientWidth, stage.clientHeight);
+  }
 }
 
 // ---------- start ----------
