@@ -1430,6 +1430,8 @@ function stepDown() {
     renderer.setSize(stage.clientWidth, stage.clientHeight); composer.setSize(stage.clientWidth, stage.clientHeight);
   }
 }
+// phones and tablets start in the light mode: no glow, no shadows, normal resolution
+if (matchMedia("(pointer: coarse)").matches) { stepDown(); stepDown(); renderer.setPixelRatio(1); composer.setPixelRatio(1); }
 
 // ---------- start ----------
 // on the campus view, keep the biggest labels and hide the ones that would sit on top of each other
