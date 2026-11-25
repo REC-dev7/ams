@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>{% block title %}{% endblock %} · REC AMS</title>
+<title>{% block title %}{% endblock %} · REC Enterprise Technology Services</title>
 <link rel="icon" href="{{ url_for('static', filename='rec-icon.png') }}">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" media="print" onload="this.media='all'">
@@ -18,7 +18,7 @@
 <div class="app">
   <a class="skip" href="#main">Skip to content</a>
   <aside class="side">
-    <div class="brand"><div class="logo"><img src="{{ url_for('static', filename='rec-icon.png') }}" alt="REC" width="32" height="32"></div><div>REC <span class="gold">AMS</span><small>Rajalakshmi Engineering College</small></div></div>
+    <div class="brand"><div class="logo"><img src="{{ url_for('static', filename='rec-icon.png') }}" alt="REC" width="32" height="32"></div><div>REC <span class="gold">Enterprise Technology Services</span><small>Rajalakshmi Engineering College</small></div></div>
     <nav class="nav">
       <a href="{{ url_for('dashboard') }}" class="{{ 'on' if ep == 'dashboard' }}" {{ 'aria-current=page' if ep == 'dashboard' }}>{{ icon('<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>') }}Dashboard</a>
       <a href="{{ url_for('locations') }}" class="{{ 'on' if ep in ('locations', 'room') }}" {{ 'aria-current=page' if ep in ('locations', 'room') }}>{{ icon('<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1"/>') }}Buildings &amp; rooms</a>
