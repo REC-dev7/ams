@@ -182,7 +182,8 @@ def init(A):
 
     # ---------- service rules: fix-by hours, quiet limit, auto-assign (admin edits them; no code change needed) ----------
 
-    defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0", "auto_close_days": "0"}
+    defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0", "auto_close_days": "0",
+                "esc_pickup_hours": "0", "esc_overdue_hours": "0"}
     A.app_settings_cache = dict(defaults)
 
     @app.before_request
@@ -216,6 +217,12 @@ def init(A):
             flash("Auto-close days must be a whole number from 0 (never) to 60.", "error")
             return redirect(url_for("settings"))
         new["auto_close_days"] = str(days)
+        for key in ("esc_pickup_hours", "esc_overdue_hours"):
+            v = A.opt_int(f.get(key)) if f.get(key) not in (None, "") else 0
+            if v is None or v > 2000:
+                flash("Escalation hours must be whole numbers from 0 (off) to 2000.", "error")
+                return redirect(url_for("settings"))
+            new[key] = str(v)
         new["auto_assign"] = "1" if f.get("auto_assign") else "0"
         db().executemany("INSERT INTO app_settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", list(new.items()))
         db().commit()
@@ -337,6 +344,7 @@ def init(A):
             last_check["at"] = time.time()
             run_due()
             auto_close()
+            escalate()
             send_reminders()
 
     def auto_close():
@@ -352,6 +360,46 @@ def init(A):
                 db().execute("INSERT INTO comments(ticket_id, user_id, body, system, at) VALUES (?, NULL, ?, 1, ?)",
                              (t["id"], f"Closed automatically: no reply {days} day(s) after it was resolved", stamp))
         db().commit()
+
+    def escalate():
+        """Escalation rules, each off at 0 hours.
+        Level 1: no IT reply or assignment by a person N hours after it was raised: the admins are told.
+        Level 2: still open N hours past its fix-by time: the admins and the HOD of the ticket's department are told.
+        A ticket moves up a level once; each person gets one message per sweep however many tickets moved."""
+        pickup = int(A.app_settings_cache.get("esc_pickup_hours") or 0)
+        late = int(A.app_settings_cache.get("esc_overdue_hours") or 0)
+        stamp = A.now()
+        # a new fix-by time (reopened, priority changed, requester replied) takes the ticket back down
+        db().execute("UPDATE tickets SET escalation=0 WHERE escalation=2 AND (due_at IS NULL OR due_at > ?)", (stamp,))
+        before = lambda h: (datetime.now() - timedelta(hours=h)).strftime(A.FMT)
+        rules = []  # highest level first, so a ticket matching both is reported once
+        if late:
+            rules.append((2, "t.due_at < ?", before(late), f"still open {late}h past its fix-by time"))
+        if pickup:
+            rules.append((1, "t.status='Open' AND t.first_response_at IS NULL AND t.created_at < ?", before(pickup),
+                          f"not picked up {pickup}h after it was raised"))
+        moved = []
+        for level, cond, cut, why in rules:
+            for t in q(A.TICKET_SQL + f" WHERE {A.OPEN} AND COALESCE(t.escalation,0) < ? AND {cond}", (level, cut)):
+                # only the worker whose update lands writes the note and sends
+                if db().execute("UPDATE tickets SET escalation=? WHERE id=? AND COALESCE(escalation,0) < ?", (level, t["id"], level)).rowcount:
+                    db().execute("INSERT INTO comments(ticket_id, user_id, body, system, at) VALUES (?, NULL, ?, 1, ?)",
+                                 (t["id"], f"Escalated: {why}", stamp))
+                    moved.append((level, t, why))
+        db().commit()
+        if not moved:
+            return
+        line = lambda t, why: f"{ref(t)} [{t['priority']}] {t['title']} ({why}, {t['assignee'] or 'unassigned'})"
+        chat(f"Escalated: {len(moved)} ticket(s)\n" + "\n".join(line(t, why) for _, t, why in moved[:15])
+             + (f"\n...and {len(moved) - 15} more" if len(moved) > 15 else ""), "Escalation", channel="escalation-chat")
+        inbox = {}
+        admins = [u["email"] for u in q("SELECT email FROM users WHERE role='admin'")]
+        for level, t, why in moved:
+            hods = [u["email"] for u in q("SELECT email FROM users WHERE role='hod' AND department=?", (t["department"],))] if level == 2 else []
+            for to in {e for e in admins + hods if e}:
+                inbox.setdefault(to, []).append(f"{line(t, why)}\n  {link(t)}")
+        for to, lines in inbox.items():
+            mail(to, f"[Helpdesk] Escalated: {len(lines)} ticket(s)", "\n".join(lines) + "\n", channel="escalation-email")
 
     def send_reminders():
         """Once a day: overdue and quiet tickets to the Chat space, and each technician their own by email.

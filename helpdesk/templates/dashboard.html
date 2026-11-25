@@ -10,6 +10,7 @@
 </div>
 
 <div class="kpis">
+  {% if stats.escalated and user.role != 'staff' %}<a class="kpi caution" href="{{ url_for('tickets', escalated=1) }}"><div class="label">Escalated</div><div class="value">{{ stats.escalated }}</div></a>{% endif %}
   <a class="kpi" href="{{ url_for('tickets', scope='all', status='Open') }}"><div class="label">Open</div><div class="value">{{ stats.Open }}</div></a>
   <a class="kpi" href="{{ url_for('tickets', scope='all', status='In progress') }}"><div class="label">In progress</div><div class="value">{{ stats['In progress'] }}</div></a>
   <a class="kpi {{ 'caution' if stats['Waiting on requester'] }}" href="{{ url_for('tickets', scope='all', status='Waiting on requester') }}"><div class="label">Waiting on requester</div><div class="value">{{ stats['Waiting on requester'] }}</div></a>

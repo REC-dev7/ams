@@ -491,6 +491,72 @@ def test_daily_reminder():
             os.environ.pop(k, None)
 
 
+def test_escalation():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "esc.db")
+    m.init_db()
+    m.seed_demo()
+    with sqlite3.connect(m.DB) as db:
+        db.execute("DELETE FROM tickets")
+        db.execute("UPDATE users SET email=username || '@example.edu' WHERE role IN ('admin','hod')")
+        dept = db.execute("SELECT department FROM users WHERE role='hod'").fetchone()[0]
+    c = m.app.test_client()
+    x.last_check["at"] = time.time()
+    login(c, "staff", "demo-staff-2026")
+    waiting, late, new = (raise_ticket(c, n, location="Lab 1") for n in ("Nobody looked", "Way overdue", "Just raised"))
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE tickets SET created_at=datetime('now','localtime','-5 hours') WHERE id=?", (waiting,))
+        db.execute("UPDATE tickets SET due_at=datetime('now','localtime','-30 hours'), department=? WHERE id=?", (dept, late))
+    login(c, "admin", "demo-admin-2026")
+
+    def sweep():
+        x.last_check["at"] = 0
+        c.get("/")
+        x.wait()
+
+    def level(tid):
+        return row("SELECT escalation FROM tickets WHERE id=?", tid)["escalation"]
+
+    sweep()  # both rules are off by default
+    assert (level(waiting), level(late), level(new)) == (0, 0, 0)
+
+    rules = {"sla_Critical": "4", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24"}
+    bad = post(c, "/settings/rules", {**rules, "esc_pickup_hours": "abc"}, "/settings")
+    assert b"Escalation hours" in c.get(bad.location, follow_redirects=True).data
+    sent = []
+    real = x.send_mail
+    x.send_mail = lambda msg: sent.append(msg)
+    os.environ.update(HD_SMTP_HOST="smtp.example", HD_SMTP_FROM="helpdesk@example.edu")
+    try:
+        post(c, "/settings/rules", {**rules, "esc_pickup_hours": "4", "esc_overdue_hours": "24"}, "/settings")
+        sweep()
+        assert (level(waiting), level(late), level(new)) == (1, 2, 0)
+        to = sorted(msg["To"] for msg in sent if "Escalated" in msg["Subject"])
+        assert len(to) == len(set(to)) >= 2, to  # one message each, to the admin and the HOD
+        n = len(sent)
+        sweep()  # a ticket moves up a level only once
+        assert len(sent) == n
+        assert row("SELECT COUNT(*) n FROM comments WHERE body LIKE 'Escalated:%'")["n"] == 2
+    finally:
+        x.send_mail = real
+        os.environ.pop("HD_SMTP_HOST")
+        os.environ.pop("HD_SMTP_FROM")
+
+    listed = c.get("/tickets?escalated=1").get_data(as_text=True)
+    assert "Nobody looked" in listed and "Way overdue" in listed and "Just raised" not in listed
+    assert "escalated=1" in c.get("/").get_data(as_text=True)
+
+    # picking it up clears level 1; a new fix-by time clears level 2
+    login(c, "tech", "demo-tech-2026")
+    post(c, f"/tickets/{waiting}/assign", {"take": "1"}, f"/tickets/{waiting}")
+    assert "Nobody looked" not in c.get("/tickets?escalated=1").get_data(as_text=True)
+    with sqlite3.connect(m.DB) as db:
+        db.execute("UPDATE tickets SET due_at=datetime('now','localtime','+1 day') WHERE id=?", (late,))
+    sweep()
+    assert level(late) == 0
+    x.last_check["at"] = time.time()
+
+
 def test_service_rules_and_auto_assign():
     import hd_extra as x
     m.DB = os.path.join(tempfile.mkdtemp(), "rules.db")
@@ -670,6 +736,7 @@ if __name__ == "__main__":
     test_notifications_analytics_maintenance_writeback()
     test_due_maintenance_runs_by_itself()
     test_daily_reminder()
+    test_escalation()
     test_service_rules_and_auto_assign()
     test_remove_demo_accounts()
     test_upload_virus_scan()

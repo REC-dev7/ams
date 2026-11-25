@@ -25,6 +25,7 @@
   {% if user.team %}<label class="check"><input type="checkbox" name="myteam" value="1" {{ 'checked' if a.myteam }}> My team</label>{% endif %}
   <label class="check"><input type="checkbox" name="unassigned" value="1" {{ 'checked' if a.unassigned }}> Unassigned</label>
   <label class="check"><input type="checkbox" name="overdue" value="1" {{ 'checked' if a.overdue }}> Overdue</label>
+  <label class="check"><input type="checkbox" name="escalated" value="1" {{ 'checked' if a.escalated }}> Escalated</label>
   <label class="check"><input type="checkbox" name="stale" value="1" {{ 'checked' if a.stale }}> No update {{ STALE_HOURS }}h</label>
   <button class="btn">Filter</button>
   {% if a %}<a class="btn ghost" href="{{ url_for('tickets') }}">Clear</a>{% endif %}

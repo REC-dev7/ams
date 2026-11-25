@@ -92,7 +92,7 @@ MIGRATIONS = {
     "tickets": [("request_type", "TEXT DEFAULT 'Fault'"), ("team", "TEXT"), ("department", "TEXT"),
                 ("location_id", "INTEGER REFERENCES locations(id)"), ("urgent_reason", "TEXT"), ("first_response_at", "TEXT"),
                 ("updated_at", "TEXT"), ("parent_id", "INTEGER REFERENCES tickets(id)"), ("parts_used", "TEXT"),
-                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT"), ("rating", "INTEGER")],
+                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT"), ("rating", "INTEGER"), ("escalation", "INTEGER DEFAULT 0")],
     "comments": [("internal", "INTEGER DEFAULT 0")],
 }
 
@@ -387,7 +387,16 @@ def age_text(t):
     return f"took {span}" if end is not None and t["status"] in ("Resolved", "Closed") and t["resolved_at"] else span
 
 
-app.jinja_env.globals.update(overdue=overdue, due_text=due_text, is_stale=is_stale, ago=ago, age_text=age_text)
+def escalated(t):
+    """1 = nobody picked it up, 2 = long overdue. 0 once that is no longer true, even before the next sweep tidies the column."""
+    if t["status"] not in ("Open", "In progress"):
+        return 0
+    if t["escalation"] == 2 and overdue(t):
+        return 2
+    return 1 if t["escalation"] == 1 and not t["first_response_at"] else 0
+
+
+app.jinja_env.globals.update(escalated=escalated, overdue=overdue, due_text=due_text, is_stale=is_stale, ago=ago, age_text=age_text)
 app.jinja_env.globals["static_v"] = int(os.path.getmtime(os.path.join(HERE, "static", "style.css")))  # cache-bust: CSS/JS cached for a day
 
 
@@ -512,6 +521,8 @@ PRIO_ORDER = "CASE t.priority WHEN 'Critical' THEN 0 WHEN 'High' THEN 1 WHEN 'Me
 DUE_ORDER = "t.due_at IS NULL, t.due_at"
 OPEN = "t.status IN ('Open','In progress')"  # SLA clock running
 LIVE_SQL = "t.status IN ('Open','In progress','Waiting on requester')"
+# same rule as escalated(); takes the current time as its one argument
+ESCALATED = f"{OPEN} AND ((t.escalation=2 AND t.due_at < ?) OR (t.escalation=1 AND t.first_response_at IS NULL))"
 
 
 def loc_label(r):
@@ -658,6 +669,7 @@ def dashboard():
             months[r["m"]][1] = r["n"]
     peak = max([n for v in months.values() for n in v] or [1])
     trend = [{"label": m, "raised": v[0], "closed": v[1], "r": round(v[0] * 100 / peak), "c": round(v[1] * 100 / peak)} for m, v in sorted(months.items())]
+    stats["escalated"] = q(f"SELECT COUNT(*) n FROM tickets t WHERE {ESCALATED}{where}", [now(), *sargs], one=True)["n"]
     return render_template("dashboard.html", stats=stats, trend=trend, by_priority=bars("t.priority"), by_cat=bars("t.category"), by_team=bars("t.team"))
 
 
@@ -682,6 +694,9 @@ def ticket_filters():
         sql += f" AND t.assigned_to IS NULL AND {LIVE_SQL}"
     if a.get("overdue"):
         sql += f" AND {OPEN} AND t.due_at < ?"
+        args.append(now())
+    if a.get("escalated"):
+        sql += f" AND {ESCALATED}"
         args.append(now())
     if a.get("stale"):
         sql += f" AND {OPEN} AND t.updated_at < ?"
@@ -1237,7 +1252,7 @@ ADMIN_ACTIONS = {"user_add": "Added a user", "user_update": "Changed a user", "u
                  "location_add": "Added places", "location_delete": "Removed a place", "department_add": "Added a department",
                  "department_delete": "Removed a department", "rules_save": "Changed the service rules", "maintenance_act": "Changed a planned job"}
 DETAIL_KEYS = ("name", "username", "role", "extra_roles", "department", "department_id", "team", "email", "block", "floor", "room",
-               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours")
+               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours", "esc_pickup_hours", "esc_overdue_hours")
 
 
 @app.after_request
