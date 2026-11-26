@@ -195,7 +195,7 @@ def init(A):
     @app.before_request
     def hold_unapproved():
         # one gate for every way IT could work a ticket that is still waiting
-        if request.method == "POST" and request.endpoint in ("ticket_assign", "ticket_status", "ticket_resolve", "ticket_link") and g.get("user"):
+        if request.method == "POST" and request.endpoint in ("ticket_assign", "ticket_status", "ticket_resolve", "ticket_link") and g.get("user") and g.user["role"] in A.MANAGE:  # everyone else gets the normal refusal
             tid = request.view_args["tid"]
             if q("SELECT 1 FROM tickets WHERE id=? AND approval='Pending'", (tid,), one=True):
                 flash("This request is waiting for approval. It can be worked once it is approved.", "error")

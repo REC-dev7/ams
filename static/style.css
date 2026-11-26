@@ -170,7 +170,7 @@ details.drop[open] > summary { margin-bottom: 14px; }
   .app { grid-template-columns: minmax(0, 1fr); }
   .table-wrap, .card.flush { overflow-x: auto; }
   .side { position: sticky; top: 0; z-index: 30; height: auto; padding: 10px 12px 6px; }
-  .brand { padding: 0 4px 8px; }
+  .brand { padding: 0 128px 8px 4px; font-size: 14px; }  /* leaves room for Account / Sign out, so the long name wraps beside them */
   .nav { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
   .nav a { flex: none; margin: 0; padding: 7px 10px; border-left: 0; border-bottom: 3px solid transparent; border-radius: 6px 6px 0 0; }
   .nav a.on { border-bottom-color: var(--gold); }

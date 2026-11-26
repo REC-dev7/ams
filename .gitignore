@@ -1,5 +1,7 @@
 # local data and secrets, never commit
 *.db
+*.db-wal
+*.db-shm
 secret.key
 __pycache__/
 *.pyc
