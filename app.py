@@ -237,6 +237,7 @@ AUDIT_DAYS = 365  # stock must be physically verified at least yearly
 
 def init_db():
     with sqlite3.connect(DB) as c:
+        c.execute("PRAGMA journal_mode=WAL")  # readers no longer wait for a writer; stays set in the file
         c.executescript(SCHEMA)
         def add_columns():
             for table, cols in MIGRATIONS.items():
@@ -1222,6 +1223,9 @@ def custody_ack(cid):
     a = get_asset(c["asset_id"])
     if not (allowed("move") or (c["person"] and c["person"].strip().lower() == g.user["name"].strip().lower())):
         abort(403)
+    if c["ack_at"]:  # keep the first receipt; a second click must not overwrite who actually confirmed it
+        flash(f"Already acknowledged by {c['ack_by']} on {c['ack_at']}.", "ok")
+        return redirect(url_for("asset", aid=a["id"]))
     db().execute("UPDATE custody SET ack_by=?, ack_at=? WHERE id=?", (g.user["name"], datetime.now().strftime("%Y-%m-%d %H:%M"), cid))
     log(a["id"], f"Receipt acknowledged by {g.user['name']}", etype="Acknowledged")
     db().commit()

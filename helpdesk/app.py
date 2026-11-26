@@ -133,6 +133,7 @@ def q(sql, args=(), one=False):
 
 def init_db():
     with sqlite3.connect(DB) as c:
+        c.execute("PRAGMA journal_mode=WAL")  # readers no longer wait for a writer; stays set in the file
         c.executescript(SCHEMA)
         c.executescript(hd_extra.SCHEMA)
         def add_columns():

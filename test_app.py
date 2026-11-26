@@ -1011,6 +1011,21 @@ def test_admin_change_record():
     assert b"Changed a user" in c.get("/users").data
 
 
+def test_custody_ack_kept():
+    m.DB = os.path.join(tempfile.mkdtemp(), "ack.db")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "hod")
+    cid = row("SELECT c.id FROM custody c JOIN assets a ON a.id=c.asset_id WHERE c.ended_at IS NULL AND a.managing_dept_id=? LIMIT 1", int(dept("CSE")))["id"]
+    post(c, f"/custody/{cid}/ack", {})
+    first = row("SELECT ack_by, ack_at FROM custody WHERE id=?", cid)
+    assert first["ack_by"] == "Dr. Mohan (HOD, CSE)"
+    login(c, "lab")
+    post(c, f"/custody/{cid}/ack", {})
+    assert row("SELECT ack_by, ack_at FROM custody WHERE id=?", cid) == first  # a second click doesn't overwrite who confirmed
+
+
 if __name__ == "__main__":
     test_flow()
     test_tags_are_unique_under_concurrency()
@@ -1026,4 +1041,5 @@ if __name__ == "__main__":
     test_login_lockout()
     test_passwords_and_idle_sign_out()
     test_admin_change_record()
+    test_custody_ack_kept()
     print("ok")
