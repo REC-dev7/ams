@@ -1,0 +1,37 @@
+{% extends "base.html" %}{% block title %}Saved fixes{% endblock %}
+{% block body %}
+<div class="head"><div><h1>Saved fixes</h1>
+  <div class="muted">Steps for common problems. Try these before raising a ticket.</div></div>
+  <div class="actions">{% if user.role != 'auditor' %}<a class="btn ghost" href="{{ url_for('ticket_new') }}">Still stuck? Raise a ticket</a>{% endif %}</div></div>
+
+<form class="filters">
+  <input type="search" name="q" value="{{ q_term }}" placeholder="Search, e.g. printer, Wi-Fi" aria-label="Search saved fixes">
+  <select name="category" aria-label="Kind of problem"><option value="">All kinds of problem</option>{% for c in CATEGORIES %}<option {{ 'selected' if cat == c }}>{{ c }}</option>{% endfor %}</select>
+  <button class="btn">Search</button>
+</form>
+
+{% if can('admin', 'technician') %}
+<details class="card" style="margin-bottom:16px" {{ 'open' if preset }}>
+  <summary style="cursor:pointer"><b>{{ 'Edit this fix' if edit else 'Add a fix' }}</b></summary>
+  <form method="post" action="{{ url_for('kb_save') }}" class="stack" style="margin-top:12px">{{ csrf }}
+    {% if edit %}<input type="hidden" name="id" value="{{ edit.id }}">{% endif %}
+    <input name="title" required maxlength="140" value="{{ preset.title or '' }}" placeholder="Problem, e.g. Printer shows offline" aria-label="Problem">
+    <select name="category" aria-label="Kind of problem" style="width:auto">{% for c in CATEGORIES %}<option {{ 'selected' if preset.category == c }}>{{ c }}</option>{% endfor %}</select>
+    <textarea name="body" required rows="6" maxlength="5000" placeholder="Steps, one per line. No passwords or personal details: everyone signed in can read this." aria-label="Steps">{{ preset.body or '' }}</textarea>
+    <div><button class="btn">Save fix</button>{% if preset %} <a class="btn ghost" href="{{ url_for('kb') }}">Cancel</a>{% endif %}</div>
+  </form>
+</details>
+{% endif %}
+
+{% for a in rows %}
+<details class="card" style="margin-bottom:10px">
+  <summary style="cursor:pointer"><b>{{ a.title }}</b> <span class="chip plain">{{ a.category }}</span></summary>
+  <p style="white-space:pre-line">{{ a.body }}</p>
+  <div class="muted" style="font-size:12px">Updated {{ a.updated_at[:10] }} by {{ a.updated_by }}</div>
+  {% if can('admin', 'technician') %}
+  <div class="actions" style="margin-top:8px"><a class="btn sm ghost" href="{{ url_for('kb', edit=a.id) }}">Edit</a>
+    <form method="post" action="{{ url_for('kb_delete', aid=a.id) }}" onsubmit="return confirm('Delete this fix?')">{{ csrf }}<button class="btn danger sm">Delete</button></form></div>
+  {% endif %}
+</details>
+{% else %}<div class="card"><p class="muted" style="margin:0">{{ 'No saved fix matches.' if q_term or cat else 'No saved fixes yet.' }}</p></div>{% endfor %}
+{% endblock %}

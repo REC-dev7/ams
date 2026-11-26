@@ -23,7 +23,8 @@
     <form method="post" action="{{ url_for('ticket_close', tid=t.id) }}">{{ csrf }}<button class="btn">Mark done / delivered</button></form>
     {% endif %}
     {% if t.rating %}<span class="chip plain {{ 'bad' if t.rating <= 2 else '' }}" title="How the requester rated the fix">Rated {{ t.rating }}/5</span>{% endif %}
-    {% if t.status in ('Resolved', 'Closed') and can_confirm %}
+    {% if is_it and t.resolution %}<a class="btn ghost" href="{{ url_for('kb', **{'from': t.id}) }}">Save as a fix</a>{% endif %}
+    {% if t.status in ('Resolved', 'Closed') and can_confirm and t.approval != 'Rejected' %}
     <form method="post" action="{{ url_for('ticket_reopen', tid=t.id) }}">{{ csrf }}<button class="btn ghost">Not fixed, reopen</button></form>
     {% endif %}
   </div>
@@ -31,7 +32,17 @@
 
 {{ steps(t) }}
 
-{% if t.status == 'Waiting on requester' %}
+{% if t.approval == 'Pending' and live %}
+<div class="banner warn"><b>Waiting for approval.</b>
+  <div class="muted">{{ 'Approve it to send it to IT. The fix-by clock starts then.' if can_approve else 'IT can work on it once the HOD or an admin approves it.' }}</div>
+  {% if can_approve %}
+  <form method="post" action="{{ url_for('ticket_approval', tid=t.id) }}" class="actions" style="margin-top:10px">{{ csrf }}
+    <input name="reason" maxlength="300" placeholder="Reason (needed to reject)" aria-label="Reason" style="flex:1;min-width:200px">
+    <button class="btn sm" name="decision" value="approve">Approve</button>
+    <button class="btn sm danger" name="decision" value="reject">Reject</button>
+  </form>
+  {% endif %}</div>
+{% elif t.status == 'Waiting on requester' %}
 <div class="banner warn"><b>{{ 'Waiting for the requester.' if is_it else 'IT needs an answer from you.' }}</b>
   {% if ask.text %}<div>{{ ask.text }}</div>{% endif %}
   <div class="muted">{{ 'The fix-by clock is paused until they reply.' if is_it else 'Reply in the updates box below. The fix-by clock restarts when you do.' }}</div></div>
@@ -96,7 +107,7 @@
 </div>
 {% endif %}
 
-{% if is_it and (live or t.status == 'Planned') %}
+{% if is_it and (live or t.status == 'Planned') and t.approval != 'Pending' %}
 <div class="grid g2" style="margin-bottom:16px">
   <div class="card">
     <h2>Work on it</h2>

@@ -80,6 +80,10 @@ Defaults: Critical 4 h · High 1 day · Medium 3 days · Low 7 days, counted fro
 An admin changes these under *Places & departments → Service rules* (new times apply to tickets raised after saving).
 The same box switches on **auto-assign** (each new ticket goes to the technician in its team with the fewest open tickets) and **auto-close** (a resolved ticket nobody confirmed or reopened within N days is closed, with a note). Both are off by default.
 
+**Request approvals** (same box, both off by default): new requirements and/or service requests wait for the department's HOD or an admin. Until then there is no fix-by clock and IT cannot assign, resolve or link the ticket. A rejection needs a reason and closes it. Requests raised by IT, or by an HOD for their own department, don't wait.
+
+**Saved fixes** (side menu): steps for common problems. Everyone signed in reads them, admins and technicians write them (a fixed ticket has *Save as a fix*), and the raise-a-ticket form shows the ones for the chosen kind of problem.
+
 **Escalation rules** (same box, off at 0 hours): a ticket nobody picked up within N hours goes to the admins; a ticket still open N hours past its fix-by time goes to the admins and the department's HOD. Escalated tickets get a tag, a dashboard count and a filter, plus a note on the ticket; email and Chat are sent when set up. A ticket is escalated once per level. The check runs when someone opens a page (at most every 5 minutes), so on a server that sleeps nothing is sent until the next visit.
 
 When the requester confirms a fix they can **rate it 1 to 5**; the average shows on *Analytics*.

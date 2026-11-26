@@ -49,6 +49,21 @@
     show();
   });
 
+  // saved fixes: show only the ones for the chosen kind of problem, and hide the box when there are none
+  document.querySelectorAll("[data-fixes]").forEach(function (box) {
+    var sel = document.querySelector("select[name=category]");
+    function show() {
+      var any = false;
+      box.querySelectorAll("[data-cat]").forEach(function (d) {
+        d.hidden = d.dataset.cat !== sel.value;
+        any = any || !d.hidden;
+      });
+      box.hidden = !any;
+    }
+    sel.addEventListener("change", show);
+    show();
+  });
+
   document.querySelectorAll("select[data-reasons]").forEach(function (sel) {
     var hint = sel.parentNode.querySelector("[data-reason-hint]");
     var map = JSON.parse(sel.dataset.reasons);

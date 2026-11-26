@@ -557,6 +557,103 @@ def test_escalation():
     x.last_check["at"] = time.time()
 
 
+def test_saved_fixes():
+    m.DB = os.path.join(tempfile.mkdtemp(), "kb.db")
+    m.init_db()
+    m.seed_demo()
+    c = m.app.test_client()
+    login(c, "staff", "demo-staff-2026")
+    assert b"No saved fixes yet" in c.get("/help").data
+    assert post(c, "/help/save", {"title": "x", "body": "y"}, "/tickets/new").status_code == 403  # staff can't write
+    login(c, "tech", "demo-tech-2026")
+    post(c, "/help/save", {"title": "Printer shows offline", "category": "Printer / scanner", "body": "Switch it off and on.\n<script>x</script>"}, "/help")
+    aid = row("SELECT id FROM articles")["id"]
+    login(c, "staff", "demo-staff-2026")
+    page = c.get("/help?q=offline").get_data(as_text=True)
+    assert "Printer shows offline" in page and "<script>x" not in page and "Add a fix" not in page
+    assert "Printer shows offline" not in c.get("/help?category=Other").get_data(as_text=True)
+    form = c.get("/tickets/new").get_data(as_text=True)
+    assert "Try a saved fix first" in form and 'data-cat="Printer / scanner"' in form
+    assert post(c, f"/help/{aid}/delete", {}, "/tickets/new").status_code == 403
+    login(c, "tech", "demo-tech-2026")
+    tid = raise_ticket(c, "Scanner jam", category="Printer / scanner", location="Lab 1")
+    post(c, f"/tickets/{tid}/resolve", {"resolution": "Cleared the paper path"}, f"/tickets/{tid}")
+    assert "Save as a fix" in c.get(f"/tickets/{tid}").get_data(as_text=True)
+    assert "Cleared the paper path</textarea>" in c.get(f"/help?from={tid}").get_data(as_text=True)
+    post(c, "/help/save", {"id": str(aid), "title": "Printer offline", "category": "Printer / scanner", "body": "Restart it."}, "/help")
+    assert [tuple(r) for r in sqlite3.connect(m.DB).execute("SELECT title, body FROM articles")] == [("Printer offline", "Restart it.")]
+    post(c, f"/help/{aid}/delete", {}, "/help")
+    assert row("SELECT COUNT(*) n FROM articles")["n"] == 0
+
+
+def test_request_approvals():
+    import hd_extra as x
+    m.DB = os.path.join(tempfile.mkdtemp(), "ap.db")
+    m.init_db()
+    m.seed_demo()
+    with sqlite3.connect(m.DB) as db:
+        db.execute("DELETE FROM tickets")
+        dept = db.execute("SELECT department FROM users WHERE username='hod'").fetchone()[0]
+        db.execute("UPDATE users SET department=? WHERE username='staff'", (dept,))
+    x.last_check["at"] = time.time()
+    c = m.app.test_client()
+    rules = {"sla_Critical": "4", "sla_High": "24", "sla_Medium": "72", "sla_Low": "168", "stale_hours": "24", "auto_assign": "1"}
+
+    def ticket(tid):
+        return row("SELECT status, approval, due_at, assigned_to FROM tickets WHERE id=?", tid)
+
+    login(c, "staff", "demo-staff-2026")  # off by default
+    assert ticket(raise_ticket(c, "Move a PC", request_type="Service request", location="Lab 1"))["approval"] is None
+    login(c, "admin", "demo-admin-2026")
+    post(c, "/settings/rules", {**rules, "approve_service": "1", "approve_new": "1", "esc_pickup_hours": "4"}, "/settings")
+
+    login(c, "staff", "demo-staff-2026")
+    tid = raise_ticket(c, "Install MATLAB", request_type="Service request", category="Software / install", location="Lab 1")
+    t = ticket(tid)
+    assert (t["approval"], t["due_at"], t["assigned_to"]) == ("Pending", None, None)
+    assert ticket(raise_ticket(c, "Broken fan", location="Lab 1"))["approval"] is None  # faults never wait
+    assert post(c, f"/tickets/{tid}/approval", {"decision": "approve"}, "/tickets/new").status_code == 403  # not the requester
+
+    login(c, "tech", "demo-tech-2026")  # IT cannot work it, or approve it
+    post(c, f"/tickets/{tid}/assign", {"take": "1"}, f"/tickets/{tid}")
+    post(c, f"/tickets/{tid}/resolve", {"resolution": "done"}, f"/tickets/{tid}")
+    post(c, f"/tickets/{tid}/status", {"to": "In progress"}, f"/tickets/{tid}")
+    assert (ticket(tid)["status"], ticket(tid)["assigned_to"]) == ("Open", None)
+    assert post(c, f"/tickets/{tid}/approval", {"decision": "approve"}, f"/tickets/{tid}").status_code == 403
+
+    with sqlite3.connect(m.DB) as db:  # a long wait for approval is not IT being slow
+        db.execute("UPDATE tickets SET created_at=datetime('now','localtime','-3 days') WHERE id=?", (tid,))
+    x.last_check["at"] = 0
+    c.get("/")
+    assert row("SELECT escalation FROM tickets WHERE id=?", tid)["escalation"] == 0
+
+    login(c, "hod", "demo-hod-2026")
+    assert "For your approval" in c.get("/").get_data(as_text=True)
+    assert "Install MATLAB" in c.get("/tickets?approval=1").get_data(as_text=True)
+    assert b"Approve it to send it to IT" in c.get(f"/tickets/{tid}").data
+    post(c, f"/tickets/{tid}/approval", {"decision": "approve"}, f"/tickets/{tid}")
+    t = ticket(tid)
+    assert t["approval"] == "Approved" and t["due_at"] and t["assigned_to"]  # clock started, then auto-assigned
+    x.last_check["at"] = 0
+    c.get("/")
+    assert row("SELECT escalation FROM tickets WHERE id=?", tid)["escalation"] == 0
+    x.last_check["at"] = time.time()
+
+    login(c, "staff", "demo-staff-2026")
+    no = raise_ticket(c, "New 3D printer", request_type="New requirement", location="Lab 1")
+    login(c, "hod", "demo-hod-2026")
+    post(c, f"/tickets/{no}/approval", {"decision": "reject"}, f"/tickets/{no}")  # a reason is needed
+    assert ticket(no)["approval"] == "Pending"
+    post(c, f"/tickets/{no}/approval", {"decision": "reject", "reason": "No budget this term"}, f"/tickets/{no}")
+    assert (ticket(no)["status"], ticket(no)["approval"]) == ("Closed", "Rejected")
+    login(c, "staff", "demo-staff-2026")
+    post(c, f"/tickets/{no}/reopen", {}, f"/tickets/{no}")  # reopening must not get round the answer
+    assert ticket(no)["status"] == "Closed"
+
+    login(c, "hod", "demo-hod-2026")  # an HOD asking for their own department doesn't wait
+    assert ticket(raise_ticket(c, "Projector for HOD room", request_type="Service request", location="Lab 1"))["approval"] is None
+
+
 def test_service_rules_and_auto_assign():
     import hd_extra as x
     m.DB = os.path.join(tempfile.mkdtemp(), "rules.db")
@@ -737,6 +834,8 @@ if __name__ == "__main__":
     test_due_maintenance_runs_by_itself()
     test_daily_reminder()
     test_escalation()
+    test_saved_fixes()
+    test_request_approvals()
     test_service_rules_and_auto_assign()
     test_remove_demo_accounts()
     test_upload_virus_scan()

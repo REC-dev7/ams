@@ -24,6 +24,7 @@
       {% if user.role != 'auditor' %}
       <a href="{{ url_for('ticket_new') }}" class="{{ 'on' if ep == 'ticket_new' }}" {{ 'aria-current=page' if ep == 'ticket_new' }}>{{ icon('<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>') }}Raise a ticket</a>
       {% endif %}
+      <a href="{{ url_for('kb') }}" class="{{ 'on' if ep == 'kb' }}" {{ 'aria-current=page' if ep == 'kb' }}>{{ icon('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>') }}Saved fixes</a>
       {% if can('admin', 'technician') %}
       <a href="{{ url_for('ticket_log') }}" class="{{ 'on' if ep == 'ticket_log' }}" {{ 'aria-current=page' if ep == 'ticket_log' }}>{{ icon('<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>') }}Log completed work</a>
       {% endif %}

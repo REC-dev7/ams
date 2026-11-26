@@ -10,6 +10,7 @@
 </div>
 
 <div class="kpis">
+  {% if stats.approval %}<a class="kpi caution" href="{{ url_for('tickets', approval=1) }}"><div class="label">For your approval</div><div class="value">{{ stats.approval }}</div></a>{% endif %}
   {% if stats.escalated and user.role != 'staff' %}<a class="kpi caution" href="{{ url_for('tickets', escalated=1) }}"><div class="label">Escalated</div><div class="value">{{ stats.escalated }}</div></a>{% endif %}
   <a class="kpi" href="{{ url_for('tickets', scope='all', status='Open') }}"><div class="label">Open</div><div class="value">{{ stats.Open }}</div></a>
   <a class="kpi" href="{{ url_for('tickets', scope='all', status='In progress') }}"><div class="label">In progress</div><div class="value">{{ stats['In progress'] }}</div></a>

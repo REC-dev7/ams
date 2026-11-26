@@ -92,7 +92,7 @@ MIGRATIONS = {
     "tickets": [("request_type", "TEXT DEFAULT 'Fault'"), ("team", "TEXT"), ("department", "TEXT"),
                 ("location_id", "INTEGER REFERENCES locations(id)"), ("urgent_reason", "TEXT"), ("first_response_at", "TEXT"),
                 ("updated_at", "TEXT"), ("parent_id", "INTEGER REFERENCES tickets(id)"), ("parts_used", "TEXT"),
-                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT"), ("rating", "INTEGER"), ("escalation", "INTEGER DEFAULT 0")],
+                ("source", "TEXT DEFAULT 'Web'"), ("requester_name", "TEXT"), ("rating", "INTEGER"), ("escalation", "INTEGER DEFAULT 0"), ("approval", "TEXT"), ("approved_at", "TEXT")],
     "comments": [("internal", "INTEGER DEFAULT 0")],
 }
 
@@ -366,6 +366,8 @@ def due_text(t):
 
 
 def is_stale(t):
+    if t["approval"] == "Pending":
+        return False
     return t["status"] in ("Open", "In progress") and bool(t["updated_at"]) and (
         datetime.now() - datetime.strptime(t["updated_at"], FMT)).total_seconds() > STALE_HOURS * 3600
 
@@ -593,6 +595,33 @@ def location_from_form(f):
     return None, (f.get("location") or "").strip() or None
 
 
+APPROVAL_SETTING = {"New requirement": "approve_new", "Service request": "approve_service"}
+
+
+def needs_approval(rtype, dept):
+    """Does this request wait for an HOD or admin? Only when switched on. IT, and an HOD asking for their own department, don't wait."""
+    u = g.user
+    if u["role"] in MANAGE or (u["role"] == "hod" and dept and dept == u["department"]):
+        return False
+    key = APPROVAL_SETTING.get(rtype)
+    return bool(key) and app_settings_cache.get(key) == "1"
+
+
+def can_approve(t):
+    u = g.user
+    return t["approval"] == "Pending" and (u["role"] == "admin" or bool(u["role"] == "hod" and u["department"] and u["department"] == t["department"]))
+
+
+def awaiting_sql():
+    """(SQL, args) for the requests this user is the one to decide."""
+    sql = f"t.approval='Pending' AND {LIVE_SQL}"
+    if g.user["role"] == "admin":
+        return sql, []
+    if g.user["role"] == "hod" and g.user["department"]:
+        return sql + " AND t.department=?", [g.user["department"]]
+    return "0", []
+
+
 def new_ticket(f, logged=False):
     """Create a ticket from a form. logged=True: an IT technician records work already done (created as Closed).
     Returns (ticket id, tickets of this kind from this place in 30 days) or None after flashing the problem."""
@@ -633,11 +662,16 @@ def new_ticket(f, logged=False):
          rtype, CATEGORY_TEAM[cat], dept, reason, stamp if logged else None, stamp,
          "Logged by technician" if logged else "Web", f.get("requester_name", "").strip() or None))
     tid = cur.lastrowid
+    waits = not logged and needs_approval(rtype, dept)
+    if waits:  # no fix-by clock until somebody says yes
+        db().execute("UPDATE tickets SET approval='Pending', due_at=NULL WHERE id=?", (tid,))
     db().execute("INSERT INTO status_log(ticket_id, user_id, from_status, to_status, at) VALUES (?,?,NULL,?,?)",
                  (tid, u["id"], "Closed" if logged else "Open", stamp))
     note(tid, f"Work logged: {fix}" if logged else "Ticket raised", response=False)
     if reason:
         note(tid, f"Urgent: {reason}. Priority set to {prio}.", response=False)
+    if waits:
+        note(tid, "Waiting for approval by the HOD or an admin", response=False)
     attach(tid)
     n = q("SELECT COUNT(*) n FROM tickets WHERE location=? AND category=? AND created_at >= datetime(?, '-30 days')",
           (loc, cat, stamp), one=True)["n"] if loc else 1
@@ -670,6 +704,8 @@ def dashboard():
     peak = max([n for v in months.values() for n in v] or [1])
     trend = [{"label": m, "raised": v[0], "closed": v[1], "r": round(v[0] * 100 / peak), "c": round(v[1] * 100 / peak)} for m, v in sorted(months.items())]
     stats["escalated"] = q(f"SELECT COUNT(*) n FROM tickets t WHERE {ESCALATED}{where}", [now(), *sargs], one=True)["n"]
+    cond, extra = awaiting_sql()
+    stats["approval"] = q(f"SELECT COUNT(*) n FROM tickets t WHERE {cond}", extra, one=True)["n"]
     return render_template("dashboard.html", stats=stats, trend=trend, by_priority=bars("t.priority"), by_cat=bars("t.category"), by_team=bars("t.team"))
 
 
@@ -695,6 +731,10 @@ def ticket_filters():
     if a.get("overdue"):
         sql += f" AND {OPEN} AND t.due_at < ?"
         args.append(now())
+    if a.get("approval"):
+        cond, extra = awaiting_sql()
+        sql += f" AND {cond}"
+        args += extra
     if a.get("escalated"):
         sql += f" AND {ESCALATED}"
         args.append(now())
@@ -764,12 +804,14 @@ def ticket_new():
     if request.method == "POST":
         if made := new_ticket(request.form):
             tid, n = made
-            msg = f"Ticket HD-{tid:04d} raised. A technician will pick it up."
+            waits = q("SELECT 1 FROM tickets WHERE id=? AND approval='Pending'", (tid,), one=True)
+            msg = f"Ticket HD-{tid:04d} raised. " + ("It goes to IT once your HOD or an admin approves it." if waits else "A technician will pick it up.")
             if n >= 2:
                 msg += f" Note: this is the {ordinal(n)} {request.form.get('category', '')} report from this place in 30 days."
             flash(msg, "ok")
             return redirect(url_for("ticket", tid=tid))
-    return render_template("ticket_form.html", preset=request.form or request.args, **form_context())
+    return render_template("ticket_form.html", preset=request.form or request.args,
+                           fixes=q("SELECT title, category, body FROM articles ORDER BY title"), **form_context())
 
 
 @app.route("/tickets/log", methods=["GET", "POST"])
@@ -803,7 +845,7 @@ def ticket(tid):
         parent=q("SELECT id, title, status FROM tickets WHERE id=?", (t["parent_id"],), one=True) if t["parent_id"] else None,
         children=q("SELECT id, title, status, location FROM tickets WHERE parent_id=? ORDER BY id", (tid,)),
         techs=q("SELECT id, name, role, team FROM users WHERE role IN ('technician','admin') ORDER BY name"),
-        TEAMS=TEAMS, can_confirm=can_confirm(t), sla=SLA_HOURS)
+        TEAMS=TEAMS, can_confirm=can_confirm(t), can_approve=can_approve(t), sla=SLA_HOURS)
 
 
 @app.route("/tickets/<int:tid>/comment", methods=["POST"])
@@ -932,7 +974,9 @@ def ticket_close(tid):
 @app.route("/tickets/<int:tid>/reopen", methods=["POST"])
 def ticket_reopen(tid):
     t = get_ticket(tid)
-    if t["status"] in ("Resolved", "Closed") and can_confirm(t):
+    if t["approval"] == "Rejected":
+        flash("This request was not approved. Raise a new one if things have changed.", "error")
+    elif t["status"] in ("Resolved", "Closed") and can_confirm(t):
         due = None if not t["due_at"] and t["request_type"] == "New requirement" else (
             datetime.now() + timedelta(hours=SLA_HOURS[t["priority"]])).strftime(FMT)
         set_status(t, "Open", "Reopened: problem not fixed", resolved_at=None, due_at=due)
@@ -1252,7 +1296,7 @@ ADMIN_ACTIONS = {"user_add": "Added a user", "user_update": "Changed a user", "u
                  "location_add": "Added places", "location_delete": "Removed a place", "department_add": "Added a department",
                  "department_delete": "Removed a department", "rules_save": "Changed the service rules", "maintenance_act": "Changed a planned job"}
 DETAIL_KEYS = ("name", "username", "role", "extra_roles", "department", "department_id", "team", "email", "block", "floor", "room",
-               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours", "esc_pickup_hours", "esc_overdue_hours")
+               "campus", "building_id", "life_years", "category_id", "datatype", "auto_assign", "auto_close_days", "stale_hours", "esc_pickup_hours", "esc_overdue_hours", "approve_new", "approve_service")
 
 
 @app.after_request

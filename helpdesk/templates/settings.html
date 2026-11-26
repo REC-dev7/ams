@@ -18,6 +18,11 @@
       <label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Escalate to admins if nobody picks up a new ticket within <input type="number" name="esc_pickup_hours" min="0" max="2000" value="{{ rules.esc_pickup_hours }}" style="width:80px;min-width:0"> hours (0 = off)</label>
       <label style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">Escalate to admins and the department HOD when a ticket is overdue by <input type="number" name="esc_overdue_hours" min="0" max="2000" value="{{ rules.esc_overdue_hours }}" style="width:80px;min-width:0"> hours (0 = off)</label>
     </div>
+    <div class="filters" style="margin:0">
+      <span>Needs approval by the HOD or an admin:</span>
+      <label class="check" style="display:flex;align-items:center;gap:8px;width:auto"><input type="checkbox" name="approve_new" value="1" style="width:auto;min-width:0" {{ 'checked' if rules.approve_new == '1' }}> New requirements</label>
+      <label class="check" style="display:flex;align-items:center;gap:8px;width:auto"><input type="checkbox" name="approve_service" value="1" style="width:auto;min-width:0" {{ 'checked' if rules.approve_service == '1' }}> Service requests</label>
+    </div>
     <div><button class="btn">Save rules</button> <span class="muted" style="font-size:12px">New fix-by times apply to tickets raised after saving. Waiting on the requester still pauses the clock.</span></div>
   </form>
 </div>

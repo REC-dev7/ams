@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS maintenance (
   location_id INTEGER REFERENCES locations(id), location TEXT, asset_tag TEXT, every_days INTEGER NOT NULL,
   next_due TEXT NOT NULL, active INTEGER DEFAULT 1, created_by INTEGER REFERENCES users(id), last_ticket_id INTEGER, last_run TEXT);
 CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS articles (
+  id INTEGER PRIMARY KEY, title TEXT NOT NULL, category TEXT, body TEXT NOT NULL, updated_by TEXT, updated_at TEXT);
 """
 pending = []  # sends still running; wait() lets tests collect them
 last_check = {"at": 0.0}  # when the due-jobs check last ran (module level so tests can reset it)
@@ -146,9 +148,58 @@ def init(A):
             A.note(tid, f"Assigned to {tech['name']} (automatically: fewest open tickets in {t['team']})", response=False)
             db().commit()
 
+    def ask_approval(t):
+        """Tell the department's HOD; with no HOD on record, the admins."""
+        who = q("SELECT email FROM users WHERE role='hod' AND department=?", (t["department"],)) or q("SELECT email FROM users WHERE role='admin'")
+        for u in who:
+            mail(u["email"], f"[Helpdesk] Approval needed: {ref(t)} {t['title']}",
+                 f"{t['request_type']} from {t['requester_name'] or t['raiser']}:\n{t['title']}\n\n{t['description'] or ''}\n\nApprove or reject it here:\n{link(t)}\n")
+
     def after_create(tid):
+        if fresh(tid)["approval"] == "Pending":  # IT hears about it only once it is approved
+            ask_approval(fresh(tid))
+            return
         auto_assign(tid)
         on_new(fresh(tid))
+
+    @app.route("/tickets/<int:tid>/approval", methods=["POST"])
+    def ticket_approval(tid):
+        t = A.get_ticket(tid)
+        if not A.can_approve(t):
+            abort(403)
+        decision, reason = request.form.get("decision"), request.form.get("reason", "").strip()
+        if decision not in ("approve", "reject") or (decision == "reject" and not reason):
+            flash("To reject a request, say why.", "error")
+            return redirect(url_for("ticket", tid=tid))
+        result = "Approved" if decision == "approve" else "Rejected"
+        # only one decision counts, even if two people press at once
+        if not db().execute("UPDATE tickets SET approval=?, approved_at=? WHERE id=? AND approval='Pending'", (result, A.now(), tid)).rowcount:
+            return redirect(url_for("ticket", tid=tid))
+        if decision == "approve":
+            due = None if t["request_type"] == "New requirement" else (datetime.now() + timedelta(hours=A.SLA_HOURS[t["priority"]])).strftime(A.FMT)
+            db().execute("UPDATE tickets SET due_at=? WHERE id=?", (due, tid))
+            A.note(tid, f"Approved by {g.user['name']}" + (f": {reason}" if reason else ""), response=False)
+            db().commit()
+            after_create(tid)
+            db().commit()
+        else:
+            A.set_status(t, "Closed", f"Not approved by {g.user['name']}: {reason}")
+            db().commit()
+        who = q("SELECT email FROM users WHERE id=?", (t["raised_by"],), one=True)
+        if who:
+            mail(who["email"], f"[Helpdesk] {ref(t)} {'approved' if decision == 'approve' else 'not approved'}",
+                 f"{t['title']}\n\n{result} by {g.user['name']}.{' ' + reason if reason else ''}\n\n{link(t)}\n")
+        flash(f"Request {result.lower()}.", "ok")
+        return redirect(url_for("ticket", tid=tid))
+
+    @app.before_request
+    def hold_unapproved():
+        # one gate for every way IT could work a ticket that is still waiting
+        if request.method == "POST" and request.endpoint in ("ticket_assign", "ticket_status", "ticket_resolve", "ticket_link") and g.get("user"):
+            tid = request.view_args["tid"]
+            if q("SELECT 1 FROM tickets WHERE id=? AND approval='Pending'", (tid,), one=True):
+                flash("This request is waiting for approval. It can be worked once it is approved.", "error")
+                return redirect(url_for("ticket", tid=tid))
 
     def wrapped_new(f, logged=False):
         r = new_ticket(f, logged)
@@ -183,7 +234,8 @@ def init(A):
     # ---------- service rules: fix-by hours, quiet limit, auto-assign (admin edits them; no code change needed) ----------
 
     defaults = {**{f"sla_{p}": str(h) for p, h in A.SLA_HOURS.items()}, "stale_hours": str(A.STALE_HOURS), "auto_assign": "0", "auto_close_days": "0",
-                "esc_pickup_hours": "0", "esc_overdue_hours": "0"}
+                "esc_pickup_hours": "0", "esc_overdue_hours": "0",
+                "approve_new": "0", "approve_service": "0"}
     A.app_settings_cache = dict(defaults)
 
     @app.before_request
@@ -223,7 +275,8 @@ def init(A):
                 flash("Escalation hours must be whole numbers from 0 (off) to 2000.", "error")
                 return redirect(url_for("settings"))
             new[key] = str(v)
-        new["auto_assign"] = "1" if f.get("auto_assign") else "0"
+        for key in ("auto_assign", "approve_new", "approve_service"):
+            new[key] = "1" if f.get(key) else "0"
         db().executemany("INSERT INTO app_settings(key, value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", list(new.items()))
         db().commit()
         flash("Service rules saved. New fix-by times apply to tickets raised from now on.", "ok")
@@ -302,6 +355,55 @@ def init(A):
                                assets=[(k, n) for k, n in Counter(t["asset_tag"] for t in rows if t["asset_tag"]).most_common(8) if n > 1],
                                techs=sorted(({**d, "avg": round(sum(d["hours"]) / len(d["hours"]), 1) if d["hours"] else None} for d in per_tech.values()), key=lambda d: -d["fixed"]))
 
+    # ---------- knowledge base: saved fixes. Everyone signed in reads them; IT writes them ----------
+
+    @app.route("/help")
+    def kb():
+        term = request.args.get("q", "").strip()
+        cat = request.args.get("category") if request.args.get("category") in A.CATEGORIES else ""
+        sql, args = "SELECT * FROM articles WHERE 1=1", []
+        if term:
+            sql += " AND (title LIKE ? OR body LIKE ?)"
+            args += [f"%{term}%"] * 2
+        if cat:
+            sql += " AND category=?"
+            args.append(cat)
+        edit, preset = None, {}
+        if g.user["role"] in A.MANAGE:
+            if aid := A.opt_int(request.args.get("edit")):
+                edit = q("SELECT * FROM articles WHERE id=?", (aid,), one=True)
+                preset = dict(edit) if edit else {}
+            elif tid := A.opt_int(request.args.get("from")):  # start from a fixed ticket; IT edits it before saving
+                if t := fresh(tid):
+                    preset = {"title": t["title"], "category": t["category"], "body": t["resolution"] or ""}
+        return render_template("kb.html", rows=q(sql + " ORDER BY category, title", args), q_term=term, cat=cat, edit=edit, preset=preset)
+
+    @app.route("/help/save", methods=["POST"])
+    @role(*A.MANAGE)
+    def kb_save():
+        f = request.form
+        title, body = f.get("title", "").strip()[:140], f.get("body", "").strip()[:5000]
+        cat = f.get("category") if f.get("category") in A.CATEGORIES else "Other"
+        if not title or not body:
+            flash("Give the fix a title and write the steps.", "error")
+            return redirect(url_for("kb"))
+        vals = (title, cat, body, g.user["name"], A.now())
+        if aid := A.opt_int(f.get("id")):
+            db().execute("UPDATE articles SET title=?, category=?, body=?, updated_by=?, updated_at=? WHERE id=?", (*vals, aid))
+        else:
+            db().execute("INSERT INTO articles(title, category, body, updated_by, updated_at) VALUES (?,?,?,?,?)", vals)
+        db().commit()
+        flash("Fix saved.", "ok")
+        return redirect(url_for("kb"))
+
+    @app.route("/help/<int:aid>/delete", methods=["POST"])
+    @role(*A.MANAGE)
+    def kb_delete(aid):
+        db().execute("DELETE FROM articles WHERE id=?", (aid,))
+        db().commit()
+        flash("Fix deleted.", "ok")
+        return redirect(url_for("kb"))
+
     # ---------- planned maintenance ----------
 
     def make_ticket(m):
@@ -376,7 +478,7 @@ def init(A):
         if late:
             rules.append((2, "t.due_at < ?", before(late), f"still open {late}h past its fix-by time"))
         if pickup:
-            rules.append((1, "t.status='Open' AND t.first_response_at IS NULL AND t.created_at < ?", before(pickup),
+            rules.append((1, "t.status='Open' AND t.first_response_at IS NULL AND COALESCE(t.approval,'')!='Pending' AND COALESCE(t.approved_at, t.created_at) < ?", before(pickup),
                           f"not picked up {pickup}h after it was raised"))
         moved = []
         for level, cond, cut, why in rules:
@@ -412,7 +514,7 @@ def init(A):
             return
         db().commit()
         cut = (datetime.now() - timedelta(hours=A.STALE_HOURS)).strftime(A.FMT)
-        rows = q(A.TICKET_SQL + f" WHERE {A.OPEN} AND (t.due_at < ? OR t.updated_at < ?) ORDER BY t.due_at IS NULL, t.due_at", (A.now(), cut))
+        rows = q(A.TICKET_SQL + f" WHERE {A.OPEN} AND COALESCE(t.approval,'')!='Pending' AND (t.due_at < ? OR t.updated_at < ?) ORDER BY t.due_at IS NULL, t.due_at", (A.now(), cut))
         if not rows:
             return
         late = lambda t: "overdue" if t["due_at"] and t["due_at"] < A.now() else f"no update {A.STALE_HOURS}h"

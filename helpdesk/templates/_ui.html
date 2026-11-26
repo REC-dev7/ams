@@ -8,6 +8,7 @@
 {% if t.repeat_n and t.repeat_n >= 2 %}<span class="chip plain warn" title="Same kind of problem from this place in the last 30 days">&#8635; {{ t.repeat_n }} in 30 days</span>{% endif %}
 {% if t.parent_id %}<span class="chip plain">part of HD-{{ '%04d'|format(t.parent_id) }}</span>{% endif %}
 {% if t.child_n %}<span class="chip plain warn">outage &middot; {{ t.child_n + 1 }} reports</span>{% endif %}
+{% if t.approval == 'Pending' %}<span class="chip plain warn">needs approval</span>{% elif t.approval == 'Rejected' %}<span class="chip plain bad">not approved</span>{% endif %}
 {% if escalated(t) %}<span class="chip plain bad" title="{{ 'Long past its fix-by time' if escalated(t) == 2 else 'Nobody picked it up in time' }}">&#9650; escalated</span>{% endif %}
 {% if is_stale(t) %}<span class="chip plain bad" title="No update for {{ STALE_HOURS }}h or more">last update {{ ago(t.updated_at) }}</span>{% endif %}
 {%- endmacro %}
